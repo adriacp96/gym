@@ -107,11 +107,14 @@ body.bg-rest .light-2 { background: radial-gradient(circle, #FF9500, #4d1900); }
 }
 .screen.active { display: flex; }
 
-.top-bar { display: flex; justify-content: space-between; align-items: center; padding: 0 0 20px 0; max-width: 600px; margin: 0 auto; width: 100%; }
-.header-title { font-size: 28px; font-weight: 700; text-shadow: 0 2px 10px rgba(0,0,0,0.3); }
+.top-bar { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; padding: 0 0 20px 0; max-width: 600px; margin: 0 auto; width: 100%; }
+.header-title { font-size: clamp(22px, 5vw, 28px); font-weight: 700; text-shadow: 0 2px 10px rgba(0,0,0,0.3); }
 
-.btn-sound { background-color: var(--surface-color); color: white; border: 1px solid var(--glass-border); border-radius: 20px; padding: 8px 14px; font-size: 14px; font-weight: 600; cursor: pointer; backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); transition: background-color 0.2s; }
+.top-controls { display: flex; gap: 8px; align-items: center; }
+
+.btn-sound { background-color: var(--surface-color); color: white; border: 1px solid var(--glass-border); border-radius: 20px; padding: 8px 12px; font-size: 13px; font-weight: 600; cursor: pointer; backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); transition: background-color 0.2s, opacity 0.2s; white-space: nowrap; }
 .btn-sound:active { background-color: rgba(255,255,255,0.2); }
+.btn-sound.off { opacity: 0.55; }
 
 .workout-list { overflow-y: auto; flex: 1; padding-bottom: 20px; max-width: 600px; margin: 0 auto; width: 100%; }
 .workout-card { background-color: var(--surface-color); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border: 1px solid var(--glass-border); border-radius: 20px; padding: 20px; margin-bottom: 16px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25); }
