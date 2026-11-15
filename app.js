@@ -114,13 +114,13 @@ const btnCancelPlay = document.getElementById('btn-cancel-play');
 const countdownDisplay = document.getElementById('countdown-display');
 
 // =========================================================
-// MOTOR DE SILUETA LUMINOSA DINÁMICA PARA PNG EN CANVAS
+// MOTOR DE TRAZADO PERIMETRAL CONTINUO (MOORE-NEIGHBOR)
 // =========================================================
-const silhouetteMaskCache = {};
-let activeSilhouetteMask = null;
+const perimeterPathCache = {};
+let activePerimeterData = null;
 let lastFractionRendered = 1;
 
-function getSilhouetteOutlineMask(imgEl) {
+function extractOrderedPerimeterPath(imgEl) {
     const src = imgEl.getAttribute('src');
     if (!src || !imgEl.complete || imgEl.naturalWidth === 0) return null;
 
@@ -130,53 +130,151 @@ function getSilhouetteOutlineMask(imgEl) {
     const h = Math.max(1, Math.round(rect.height * dpr));
     const cacheKey = `${src}_${w}x${h}`;
 
-    if (silhouetteMaskCache[cacheKey]) {
-        return silhouetteMaskCache[cacheKey];
+    if (perimeterPathCache[cacheKey]) {
+        return perimeterPathCache[cacheKey];
     }
+
+    // Calcular encaje exacto (object-fit: contain) con margen para el grosor de línea
+    const padding = Math.ceil(6 * dpr);
+    const availW = Math.max(1, w - padding * 2);
+    const availH = Math.max(1, h - padding * 2);
 
     const imgRatio = imgEl.naturalWidth / imgEl.naturalHeight;
-    const boxRatio = w / h;
+    const boxRatio = availW / availH;
     let drawW, drawH, drawX, drawY;
     if (imgRatio > boxRatio) {
-        drawW = w;
-        drawH = w / imgRatio;
-        drawX = 0;
-        drawY = (h - drawH) / 2;
+        drawW = availW;
+        drawH = availW / imgRatio;
+        drawX = padding;
+        drawY = padding + (availH - drawH) / 2;
     } else {
-        drawH = h;
-        drawW = h * imgRatio;
-        drawX = (w - drawW) / 2;
-        drawY = 0;
+        drawH = availH;
+        drawW = availH * imgRatio;
+        drawX = padding + (availW - drawW) / 2;
+        drawY = padding;
     }
 
-    const strokeThickness = Math.max(2.5, 3 * dpr);
+    // Dibujar imagen en canvas temporal con ligera dilatación para unir huecos finos (ej. cordones o dedos)
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = w;
+    tempCanvas.height = h;
+    const tCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
 
-    const expandedCanvas = document.createElement('canvas');
-    expandedCanvas.width = w;
-    expandedCanvas.height = h;
-    const eCtx = expandedCanvas.getContext('2d');
-
-    const steps = 16;
-    for (let i = 0; i < steps; i++) {
-        const angle = (i / steps) * Math.PI * 2;
-        const ox = Math.cos(angle) * strokeThickness;
-        const oy = Math.sin(angle) * strokeThickness;
-        eCtx.drawImage(imgEl, drawX + ox, drawY + oy, drawW, drawH);
+    const dilate = Math.max(1.5, 2 * dpr);
+    for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2;
+        tCtx.drawImage(imgEl, drawX + Math.cos(a) * dilate, drawY + Math.sin(a) * dilate, drawW, drawH);
     }
 
-    eCtx.globalCompositeOperation = 'destination-out';
-    eCtx.drawImage(imgEl, drawX, drawY, drawW, drawH);
+    const imgData = tCtx.getImageData(0, 0, w, h).data;
+    const isOpaque = (x, y) => {
+        if (x < 0 || y < 0 || x >= w || y >= h) return false;
+        return imgData[(y * w + x) * 4 + 3] > 60;
+    };
 
-    eCtx.globalCompositeOperation = 'source-in';
-    eCtx.fillStyle = '#ffffff';
-    eCtx.fillRect(0, 0, w, h);
+    // Buscar el punto inicial en la parte superior central (como las 12 en punto de un reloj)
+    let startX = -1, startY = -1;
+    const centerX = Math.floor(w / 2);
+    outerLoop:
+    for (let y = 0; y < h; y++) {
+        for (let offset = 0; offset <= centerX; offset++) {
+            const xRight = centerX + offset;
+            if (xRight < w && isOpaque(xRight, y)) {
+                startX = xRight;
+                startY = y;
+                break outerLoop;
+            }
+            const xLeft = centerX - offset;
+            if (xLeft >= 0 && isOpaque(xLeft, y)) {
+                startX = xLeft;
+                startY = y;
+                break outerLoop;
+            }
+        }
+    }
 
-    silhouetteMaskCache[cacheKey] = expandedCanvas;
-    return expandedCanvas;
+    if (startX === -1) return null;
+
+    // Direcciones de vecindad de Moore (8 vecinos en sentido horario)
+    const dirs = [
+        [0, -1],  // 0: N
+        [1, -1],  // 1: NE
+        [1, 0],   // 2: E
+        [1, 1],   // 3: SE
+        [0, 1],   // 4: S
+        [-1, 1],  // 5: SW
+        [-1, 0],  // 6: W
+        [-1, -1]  // 7: NW
+    ];
+
+    const rawPoints = [];
+    let cx = startX;
+    let cy = startY;
+    let backtrackDir = 0; // Venimos desde arriba (Norte)
+    const maxSteps = w * h;
+    let steps = 0;
+
+    do {
+        rawPoints.push({ x: cx, y: cy });
+        let foundNext = false;
+        // Empezar búsqueda desde el siguiente vecino en sentido horario tras el punto vacío anterior
+        const startSearch = (backtrackDir + 1) % 8;
+        for (let i = 0; i < 8; i++) {
+            const dirIdx = (startSearch + i) % 8;
+            const nx = cx + dirs[dirIdx][0];
+            const ny = cy + dirs[dirIdx][1];
+            if (isOpaque(nx, ny)) {
+                // La dirección inversa desde donde entramos al nuevo píxel
+                backtrackDir = (dirIdx + 4) % 8;
+                cx = nx;
+                cy = ny;
+                foundNext = true;
+                break;
+            }
+        }
+        if (!foundNext) break;
+        steps++;
+    } while ((cx !== startX || cy !== startY) && steps < maxSteps);
+
+    if (rawPoints.length < 10) return null;
+
+    // Submuestrear y suavizar los puntos para obtener una curva fluida sin dientes de sierra
+    const sampleStep = Math.max(2, Math.round(2.5 * dpr));
+    const sampled = [];
+    for (let i = 0; i < rawPoints.length; i += sampleStep) {
+        sampled.push(rawPoints[i]);
+    }
+
+    const smoothed = [];
+    const n = sampled.length;
+    for (let i = 0; i < n; i++) {
+        const pPrev2 = sampled[(i - 2 + n) % n];
+        const pPrev1 = sampled[(i - 1 + n) % n];
+        const pCurr  = sampled[i];
+        const pNext1 = sampled[(i + 1) % n];
+        const pNext2 = sampled[(i + 2) % n];
+        smoothed.push({
+            x: (pPrev2.x + pPrev1.x * 2 + pCurr.x * 3 + pNext1.x * 2 + pNext2.x) / 9,
+            y: (pPrev2.y + pPrev1.y * 2 + pCurr.y * 3 + pNext1.y * 2 + pNext2.y) / 9
+        });
+    }
+
+    // Cerrar el circuito uniendo el último punto con el inicial
+    smoothed.push({ x: smoothed[0].x, y: smoothed[0].y });
+
+    // Calcular distancias acumuladas a lo largo de todo el perímetro
+    const cumLengths = [0];
+    let totalLength = 0;
+    for (let i = 1; i < smoothed.length; i++) {
+        const dist = Math.hypot(smoothed[i].x - smoothed[i - 1].x, smoothed[i].y - smoothed[i - 1].y);
+        totalLength += dist;
+        cumLengths.push(totalLength);
+    }
+
+    const result = { points: smoothed, cumLengths, totalLength, dpr };
+    perimeterPathCache[cacheKey] = result;
+    return result;
 }
-
-// Reutilizamos un canvas auxiliar en memoria para no crear objetos en cada fotograma
-let offscreenSweepCanvas = null;
 
 function renderPngDynamicOutline(fractionRemaining) {
     lastFractionRendered = fractionRemaining;
@@ -195,35 +293,34 @@ function renderPngDynamicOutline(fractionRemaining) {
     const ctx = outlineCanvas.getContext('2d');
     ctx.clearRect(0, 0, w, h);
 
-    if (!activeSilhouetteMask) {
-        activeSilhouetteMask = getSilhouetteOutlineMask(imgGif);
+    if (!activePerimeterData) {
+        activePerimeterData = extractOrderedPerimeterPath(imgGif);
     }
-    if (!activeSilhouetteMask) return;
+    if (!activePerimeterData) return;
 
+    const { points, cumLengths, totalLength } = activePerimeterData;
     const isRest = currentRoutine[currentStepIndex]?.isRest;
+    const lineWidth = Math.max(3, 3.6 * dpr);
 
-    // 1. Contorno base tenue
-    ctx.save();
-    ctx.globalAlpha = 0.18;
-    ctx.drawImage(activeSilhouetteMask, 0, 0, w, h);
-    ctx.restore();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = lineWidth;
 
-    // 2. Contorno continuo tipo reloj automático
+    // 1. Trazo guía completo tenue (mismo estilo que el anillo de fondo del reloj)
+    ctx.beginPath();
+    ctx.moveTo(points[0].x, points[0].y);
+    for (let i = 1; i < points.length; i++) {
+        ctx.lineTo(points[i].x, points[i].y);
+    }
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.14)';
+    ctx.stroke();
+
+    // 2. Trazo activo continuo que recorre el perímetro desde el punto inicial hasta cerrarse
     const clamped = Math.max(0, Math.min(1, fractionRemaining));
-    if (clamped > 0) {
-        if (!offscreenSweepCanvas) {
-            offscreenSweepCanvas = document.createElement('canvas');
-        }
-        if (offscreenSweepCanvas.width !== w || offscreenSweepCanvas.height !== h) {
-            offscreenSweepCanvas.width = w;
-            offscreenSweepCanvas.height = h;
-        }
+    const targetLength = totalLength * clamped;
 
-        const tCtx = offscreenSweepCanvas.getContext('2d');
-        tCtx.globalCompositeOperation = 'source-over';
-        tCtx.clearRect(0, 0, w, h);
-
-        const grad = tCtx.createLinearGradient(0, 0, w, h);
+    if (targetLength > 0.5) {
+        const grad = ctx.createLinearGradient(0, 0, w, h);
         if (isRest) {
             grad.addColorStop(0, '#FF9500');
             grad.addColorStop(1, '#FF2D55');
@@ -232,28 +329,44 @@ function renderPngDynamicOutline(fractionRemaining) {
             grad.addColorStop(1, '#0A84FF');
         }
 
-        const cx = w / 2;
-        const cy = h / 2;
-        const radius = Math.hypot(w, h);
-        const startAngle = -Math.PI / 2;
-        const endAngle = startAngle + clamped * Math.PI * 2;
+        ctx.beginPath();
+        ctx.moveTo(points[0].x, points[0].y);
 
-        tCtx.beginPath();
-        tCtx.moveTo(cx, cy);
-        tCtx.arc(cx, cy, radius, startAngle, endAngle, false);
-        tCtx.closePath();
-        tCtx.fillStyle = grad;
-        tCtx.fill();
+        let tipX = points[0].x;
+        let tipY = points[0].y;
 
-        tCtx.globalCompositeOperation = 'destination-in';
-        tCtx.drawImage(activeSilhouetteMask, 0, 0, w, h);
+        for (let i = 1; i < points.length; i++) {
+            if (cumLengths[i] <= targetLength) {
+                ctx.lineTo(points[i].x, points[i].y);
+                tipX = points[i].x;
+                tipY = points[i].y;
+            } else {
+                // Interpolación exacta entre vértices para movimiento ultra fluido
+                const segStart = cumLengths[i - 1];
+                const segLen = cumLengths[i] - segStart;
+                const t = segLen > 0 ? (targetLength - segStart) / segLen : 0;
+                tipX = points[i - 1].x + (points[i].x - points[i - 1].x) * t;
+                tipY = points[i - 1].y + (points[i].y - points[i - 1].y) * t;
+                ctx.lineTo(tipX, tipY);
+                break;
+            }
+        }
 
-        ctx.drawImage(offscreenSweepCanvas, 0, 0);
+        ctx.strokeStyle = grad;
+        ctx.stroke();
+
+        // Pequeño punto luminoso en la punta del trazado mientras avanza
+        if (clamped < 0.995) {
+            ctx.beginPath();
+            ctx.arc(tipX, tipY, lineWidth * 0.75, 0, Math.PI * 2);
+            ctx.fillStyle = '#ffffff';
+            ctx.fill();
+        }
     }
 }
 
 window.addEventListener('resize', () => {
-    activeSilhouetteMask = null;
+    activePerimeterData = null;
     if (floatingStage.style.display === 'flex') {
         renderPngDynamicOutline(lastFractionRendered);
     }
@@ -440,7 +553,7 @@ function prepareWorkout(index) {
     floatingStage.classList.remove('slide-in-right');
     floatingStage.style.display = "none";
     imgGif.removeAttribute('src');
-    activeSilhouetteMask = null;
+    activePerimeterData = null;
     textGif.style.display = "block";
     textGif.innerHTML = "Pulsa Play cuando estés listo";
 
@@ -509,11 +622,11 @@ function loadStep(index) {
         outgoingStage.addEventListener('animationend', () => outgoingStage.remove());
     }
 
-    activeSilhouetteMask = null;
+    activePerimeterData = null;
     if (step.png && step.png !== "") {
         floatingStage.classList.remove('slide-in-right');
         imgGif.onload = () => {
-            activeSilhouetteMask = getSilhouetteOutlineMask(imgGif);
+            activePerimeterData = extractOrderedPerimeterPath(imgGif);
             renderPngDynamicOutline(1);
         };
         imgGif.src = step.png;
@@ -521,7 +634,7 @@ function loadStep(index) {
         textGif.style.display = "none";
         
         if (imgGif.complete && imgGif.naturalWidth > 0) {
-            activeSilhouetteMask = getSilhouetteOutlineMask(imgGif);
+            activePerimeterData = extractOrderedPerimeterPath(imgGif);
             renderPngDynamicOutline(1);
         }
 
@@ -569,7 +682,6 @@ function renderContinuousFrame(remainingMs) {
     const displaySecond = Math.ceil(remainingSecFloat);
     const totalRemainingSecFloat = futureStepsTime + remainingSecFloat;
 
-    // Actualizar números y pitidos solo cuando cambia el segundo entero
     if (displaySecond !== lastDisplayedSecond) {
         lastDisplayedSecond = displaySecond;
         elTimerMain.innerText = displaySecond;
@@ -585,7 +697,6 @@ function renderContinuousFrame(remainingMs) {
         }
     }
 
-    // Movimiento continuo y suave (sin saltos) para ambos anillos y la silueta PNG
     if (totalWorkoutTime > 0) {
         const elapsedTotalFloat = totalWorkoutTime - totalRemainingSecFloat;
         const angle = (elapsedTotalFloat / totalWorkoutTime) * 360;
@@ -597,7 +708,7 @@ function renderContinuousFrame(remainingMs) {
         const offset = INNER_C * (1 - fractionRemaining);
         elStepRing.style.strokeDashoffset = offset;
 
-        // Barrido fluido continuo sobre la silueta del personaje
+        // Recorrer el contorno perimetral del dibujo en sincronía continua
         renderPngDynamicOutline(fractionRemaining);
     }
 }
