@@ -1,0 +1,184 @@
+:root {
+    --bg-color: #121212;
+    --surface-color: #1c1c1e;
+    --primary-color: #0A84FF;
+    --rest-color: #FF453A;
+    --text-color: #ffffff;
+    --text-secondary: #8E8E93;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    user-select: none;
+}
+
+body {
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+}
+
+.screen {
+    display: none;
+    flex-direction: column;
+    height: 100%;
+    width: 100%;
+    padding: 20px;
+}
+
+.screen.active {
+    display: flex;
+}
+
+/* Pantalla de Selección */
+.header {
+    text-align: center;
+    padding: 20px 0 30px 0;
+    font-size: 28px;
+    font-weight: 700;
+}
+
+.workout-list {
+    overflow-y: auto;
+    flex: 1;
+    padding-bottom: 20px;
+}
+
+.workout-card {
+    background-color: var(--surface-color);
+    border-radius: 16px;
+    padding: 20px;
+    margin-bottom: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+}
+
+.workout-title {
+    font-size: 22px;
+    font-weight: 600;
+}
+
+.workout-meta {
+    color: var(--text-secondary);
+    font-size: 15px;
+}
+
+.btn {
+    background-color: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: 12px;
+    padding: 16px;
+    font-size: 17px;
+    font-weight: 600;
+    cursor: pointer;
+    text-align: center;
+    width: 100%;
+    transition: opacity 0.2s, transform 0.1s;
+}
+
+.btn:active {
+    opacity: 0.8;
+    transform: scale(0.98);
+}
+
+/* Pantalla de Entrenamiento */
+.workout-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    padding-bottom: 30px;
+}
+
+.workout-header {
+    font-size: 18px;
+    color: var(--text-secondary);
+    font-weight: 600;
+    text-align: center;
+    margin-bottom: 10px;
+}
+
+.gif-placeholder {
+    width: 100%;
+    max-width: 400px;
+    aspect-ratio: 16/9;
+    background-color: var(--surface-color);
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-secondary);
+    font-size: 14px;
+    text-align: center;
+    border: 2px dashed #333;
+    overflow: hidden;
+}
+
+.gif-placeholder img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: none;
+}
+
+.exercise-info {
+    text-align: center;
+    width: 100%;
+    margin-top: 10px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.exercise-name {
+    font-size: 26px;
+    font-weight: bold;
+    margin-bottom: 15px;
+    min-height: 70px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1.2;
+}
+
+.timer-main {
+    font-size: 90px;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    margin: 10px 0;
+    color: var(--primary-color);
+    line-height: 1;
+}
+
+.timer-main.rest {
+    color: var(--rest-color);
+}
+
+.timer-total {
+    font-size: 18px;
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+    margin-top: 10px;
+}
+
+.controls {
+    width: 100%;
+    display: flex;
+    gap: 15px;
+}
+
+.btn-secondary {
+    background-color: var(--surface-color);
+    color: var(--text-color);
+}
