@@ -6,10 +6,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Entrenos">
-    
-    <!-- NUEVO: Fuerza al sistema a usar fondo oscuro en zonas de carga o rotación -->
     <meta name="theme-color" content="#121212">
-    
     <title>Entrenamientos Guiados</title>
     <link rel="stylesheet" href="styles.css">
 </head>
@@ -38,11 +35,36 @@
                     <span id="gif-text">GIF / Video<br>(Sin archivo asignado)</span>
                     <img id="exercise-gif" src="" alt="Ejercicio">
                 </div>
+                
                 <div class="exercise-info">
                     <div class="exercise-name" id="exercise-name">Preparación...</div>
-                    <div class="timer-main" id="timer-main">00</div>
-                    <div class="timer-total">Faltan: <span id="timer-total">00:00</span></div>
+                    
+                    <!-- NUEVO: Temporizador Circular -->
+                    <div class="timer-circle-container">
+                        <!-- Círculo base e indicador de segmentos -->
+                        <svg viewBox="0 0 100 100" class="timer-svg">
+                            <circle cx="50" cy="50" r="45" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="6"></circle>
+                            <!-- Aquí se inyectan los fragmentos de la rutina desde JS -->
+                            <g transform="rotate(-90 50 50)" id="timer-segments"></g>
+                            <!-- Sombra de progreso (avanza ocultando lo que ya pasó) -->
+                            <g transform="rotate(-90 50 50)">
+                                <circle id="timer-progress-shadow" cx="50" cy="50" r="45" fill="none" stroke="rgba(0,0,0,0.85)" stroke-width="8" stroke-dasharray="282.74" stroke-dashoffset="282.74"></circle>
+                            </g>
+                        </svg>
+                        
+                        <!-- Punto indicador giratorio en HTML puro para que no falle nunca en iOS -->
+                        <div class="timer-indicator-wrapper" id="timer-indicator-wrapper">
+                            <div class="timer-indicator-dot"></div>
+                        </div>
+                        
+                        <!-- Textos dentro del círculo -->
+                        <div class="timer-circle-content">
+                            <div class="timer-main" id="timer-main">00</div>
+                            <div class="timer-total" id="timer-total">00:00</div>
+                        </div>
+                    </div>
                 </div>
+
             </div>
             <div class="controls">
                 <button class="btn btn-secondary" id="btn-pause">Pausar</button>
