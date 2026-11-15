@@ -1,16 +1,10 @@
-// --- SISTEMA DE AUDIO (BIPS) ---
 let isSoundEnabled = true;
 let audioCtx = null;
 
 function initAudio() {
-    if (!audioCtx) {
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    }
-    if (audioCtx.state === 'suspended') {
-        audioCtx.resume();
-    }
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
     
-    // HACK PARA iOS
     const unlockOscillator = audioCtx.createOscillator();
     const unlockGain = audioCtx.createGain();
     unlockOscillator.connect(unlockGain);
@@ -22,14 +16,10 @@ function initAudio() {
 
 function playBeep(type) {
     if (!isSoundEnabled || !audioCtx) return;
-    
-    if (audioCtx.state === 'suspended') {
-        audioCtx.resume();
-    }
+    if (audioCtx.state === 'suspended') audioCtx.resume();
 
     const oscillator = audioCtx.createOscillator();
     const gainNode = audioCtx.createGain();
-    
     oscillator.connect(gainNode);
     gainNode.connect(audioCtx.destination);
     
@@ -49,17 +39,16 @@ function playBeep(type) {
         oscillator.stop(audioCtx.currentTime + 0.4);
     }
 }
-// --------------------------------
 
 let currentRoutine = [];
 let currentStepIndex = 0;
 let timeRemainingInStep = 0;
 let totalTimeRemaining = 0;
+let totalWorkoutTime = 0; // NUEVO: Guarda el tiempo total para los porcentajes del círculo
 let timerInterval = null;
 let prestartInterval = null;
 let isPaused = false;
 
-// Elementos del DOM
 const screenSelector = document.getElementById('screen-selector');
 const screenWorkout = document.getElementById('screen-workout');
 const listContainer = document.getElementById('workout-list');
@@ -72,8 +61,6 @@ const btnExit = document.getElementById('btn-exit');
 const btnSound = document.getElementById('btn-sound');
 const imgGif = document.getElementById('exercise-gif');
 const textGif = document.getElementById('gif-text');
-
-// NUEVOS ELEMENTOS: Capa de preparación
 const readyOverlay = document.getElementById('ready-overlay');
 const btnStartPlay = document.getElementById('btn-start-play');
 const btnCancelPlay = document.getElementById('btn-cancel-play');
@@ -81,7 +68,6 @@ const countdownDisplay = document.getElementById('countdown-display');
 
 function initApp() {
     document.body.className = 'bg-default';
-
     workoutsData.forEach((workout, index) => {
         const card = document.createElement('div');
         card.className = 'workout-card';
@@ -102,37 +88,30 @@ function initApp() {
 
     btnPause.addEventListener('click', togglePause);
     btnExit.addEventListener('click', endWorkout);
-    
-    // Si te arrepientes antes de darle a Play
     btnCancelPlay.addEventListener('click', endWorkout);
     
-    // Al pulsar "Empezar" (Play)
     btnStartPlay.addEventListener('click', () => {
-        initAudio(); // Refuerza desbloqueo audio
+        initAudio(); 
         btnStartPlay.style.display = 'none';
         btnCancelPlay.style.display = 'none';
         countdownDisplay.style.display = 'block';
 
         let count = 3;
         countdownDisplay.innerText = count;
-        
-        // Reiniciar animación CSS perfectamente
         countdownDisplay.style.animation = 'none';
-        void countdownDisplay.offsetWidth; // Fuerza el refresco del navegador
+        void countdownDisplay.offsetWidth; 
         countdownDisplay.style.animation = 'popCount 1s infinite';
-
-        playBeep('countdown'); // Pip (3)
+        playBeep('countdown'); 
 
         prestartInterval = setInterval(() => {
             count--;
             if (count > 0) {
                 countdownDisplay.innerText = count;
-                playBeep('countdown'); // Pip (2, 1)
+                playBeep('countdown'); 
             } else {
-                // Termina la cuenta y arranca el entrenamiento
                 clearInterval(prestartInterval);
                 readyOverlay.style.display = 'none';
-                loadStep(currentStepIndex); // Reproduce el Pip largo de Start
+                loadStep(currentStepIndex); 
                 timerInterval = setInterval(updateTimer, 1000);
             }
         }, 1000);
@@ -155,7 +134,39 @@ function calculateTotalTime() {
     return currentRoutine.reduce((total, step) => total + step.duration, 0);
 }
 
-// NUEVA FUNCIÓN: Prepara la UI pero espera a que pulses Play
+// NUEVO: Pinta los segmentos proporcionales del círculo SVG
+function drawSegments() {
+    const container = document.getElementById('timer-segments');
+    container.innerHTML = '';
+    const C = 2 * Math.PI * 45; // Circunferencia de r=45 -> 282.743
+    let accumulated = 0;
+    
+    currentRoutine.forEach(step => {
+        const length = (step.duration / totalWorkoutTime) * C;
+        const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        circle.setAttribute('cx', '50');
+        circle.setAttribute('cy', '50');
+        circle.setAttribute('r', '45');
+        circle.setAttribute('fill', 'none');
+        // Azul para ejercicio, Rojo para descanso
+        circle.setAttribute('stroke', step.isRest ? '#FF453A' : '#0A84FF');
+        circle.setAttribute('stroke-width', '6');
+        
+        // Pequeño hueco de 1px entre segmentos si son grandes, para que se vean separados
+        const visibleLength = Math.max(0.1, length - 1);
+        
+        circle.setAttribute('stroke-dasharray', `${visibleLength} ${C}`);
+        circle.setAttribute('stroke-dashoffset', -accumulated);
+        
+        container.appendChild(circle);
+        accumulated += length;
+    });
+
+    // Resetear el progreso visual al 0%
+    document.getElementById('timer-progress-shadow').style.strokeDashoffset = C;
+    document.getElementById('timer-indicator-wrapper').style.transform = `rotate(0deg)`;
+}
+
 function prepareWorkout(index) {
     const workout = workoutsData[index];
     currentRoutine = workout.routine;
@@ -163,14 +174,14 @@ function prepareWorkout(index) {
 
     screenSelector.classList.remove('active');
     screenWorkout.classList.add('active');
-    document.body.className = 'bg-default'; // Fondo inicial
+    document.body.className = 'bg-default'; 
 
     currentStepIndex = 0;
-    totalTimeRemaining = calculateTotalTime();
+    totalWorkoutTime = calculateTotalTime();
+    totalTimeRemaining = totalWorkoutTime;
     isPaused = false;
     btnPause.innerText = "Pausar";
     
-    // Resetea visualmente el reloj para que no se vea el del entrenamiento anterior
     elExerciseName.innerText = "¡Prepárate!";
     elTimerMain.innerText = "00";
     elTimerMain.classList.remove('rest');
@@ -179,18 +190,17 @@ function prepareWorkout(index) {
     textGif.style.display = "block";
     textGif.innerHTML = "Pulsa Play cuando estés listo";
 
-    // Muestra la capa cristal y el botón
     readyOverlay.style.display = 'flex';
     btnStartPlay.style.display = 'block';
     btnCancelPlay.style.display = 'block';
     countdownDisplay.style.display = 'none';
 
-    // Limpia cualquier intervalo que pudiera haber quedado colgado
+    drawSegments(); // Dibuja la pista circular
+
     if (timerInterval) clearInterval(timerInterval);
     if (prestartInterval) clearInterval(prestartInterval);
 }
 
-// Carga el paso de la rutina, se llama después del Play (3,2,1)
 function loadStep(index) {
     if (index >= currentRoutine.length) {
         finishWorkout();
@@ -248,6 +258,19 @@ function updateTimer() {
 function updateUI() {
     elTimerMain.innerText = timeRemainingInStep;
     elTimerTotal.innerText = formatTime(totalTimeRemaining);
+    
+    // NUEVO: Cálculo y animación de los anillos según tiempo transcurrido total
+    if (totalWorkoutTime > 0) {
+        const elapsed = totalWorkoutTime - totalTimeRemaining;
+        const C = 2 * Math.PI * 45; // 282.743
+        const elapsedLength = (elapsed / totalWorkoutTime) * C;
+        const angle = (elapsed / totalWorkoutTime) * 360;
+        
+        // Mueve la sombra oscura
+        document.getElementById('timer-progress-shadow').style.strokeDashoffset = C - elapsedLength;
+        // Gira el punto blanco luminoso
+        document.getElementById('timer-indicator-wrapper').style.transform = `rotate(${angle}deg)`;
+    }
 }
 
 function togglePause() {
@@ -276,6 +299,10 @@ function finishWorkout() {
     elTimerMain.innerText = "0";
     elTimerTotal.innerText = "00:00";
     document.body.className = 'bg-default';
+    
+    // Completa el anillo al 100% visualmente
+    document.getElementById('timer-progress-shadow').style.strokeDashoffset = 0;
+    
     playBeep('start');
     setTimeout(() => {
         endWorkout();
