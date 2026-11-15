@@ -6,6 +6,10 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Entrenos">
+    
+    <!-- NUEVO: Fuerza al sistema a usar fondo oscuro en zonas de carga o rotación -->
+    <meta name="theme-color" content="#121212">
+    
     <title>Entrenamientos Guiados</title>
     <link rel="stylesheet" href="styles.css">
 </head>
@@ -19,10 +23,8 @@
         <div class="workout-list" id="workout-list"></div>
     </div>
 
-    <!-- Se añade position: relative para que la capa superpuesta (overlay) encaje perfectamente -->
     <div id="screen-workout" class="screen" style="position: relative;">
         
-        <!-- NUEVO: Capa de preparación antes de arrancar -->
         <div id="ready-overlay" class="overlay-ready">
             <button id="btn-start-play" class="btn-play">▶ Empezar</button>
             <button id="btn-cancel-play" class="btn-cancel">Cancelar</button>
