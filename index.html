@@ -8,7 +8,7 @@
     <meta name="apple-mobile-web-app-title" content="Entrenos">
     <meta name="theme-color" content="#07070b">
     <title>Entrenamientos Guiados</title>
-    <link rel="stylesheet" href="styles.css?v=12">
+    <link rel="stylesheet" href="styles.css?v=14">
 </head>
 <body class="bg-default">
 
@@ -41,9 +41,40 @@
             </div>
 
             <div class="content-wrapper">
+                <!-- Contenedor flotante sin recuadro con silueta dinámica SVG -->
                 <div class="gif-placeholder" id="gif-container">
-                    <span id="gif-text">Imagen<br>(Sin archivo asignado)</span>
-                    <img id="exercise-gif" src="" alt="Ejercicio">
+                    <span id="gif-text">Pulsa Play cuando estés listo</span>
+                    
+                    <div class="floating-figure-stage" id="floating-figure-stage">
+                        <svg id="png-outline-svg" class="png-outline-svg" xmlns="http://www.w3.org/2000/svg">
+                            <defs>
+                                <!-- Filtro que extrae el contorno exacto de la silueta PNG -->
+                                <filter id="silhouette-stroke" x="-15%" y="-15%" width="130%" height="130%" color-interpolation-filters="sRGB">
+                                    <feMorphology in="SourceAlpha" operator="dilate" radius="3.2" result="dilated"/>
+                                    <feComposite in="dilated" in2="SourceAlpha" operator="out" result="ring"/>
+                                    <feGaussianBlur in="ring" stdDeviation="1.4" result="glow"/>
+                                    <feMerge>
+                                        <feMergeNode in="glow"/>
+                                        <feMergeNode in="ring"/>
+                                    </feMerge>
+                                </filter>
+                                <mask id="silhouette-mask">
+                                    <image id="mask-png-img" x="0" y="0" width="100%" height="100%" preserveAspectRatio="xMidYMid meet" filter="url(#silhouette-stroke)"/>
+                                </mask>
+                            </defs>
+
+                            <!-- Silueta tenue base (lo ya consumido) -->
+                            <g mask="url(#silhouette-mask)">
+                                <rect x="0" y="0" width="100%" height="100%" fill="rgba(255, 255, 255, 0.16)"/>
+                                <!-- Barrido dinámico sincronizado con el tiempo restante -->
+                                <foreignObject x="0" y="0" width="100%" height="100%">
+                                    <div id="silhouette-progress-fill" class="silhouette-progress-fill"></div>
+                                </foreignObject>
+                            </g>
+                        </svg>
+
+                        <img id="exercise-gif" src="" alt="Ejercicio">
+                    </div>
                 </div>
                 
                 <div class="exercise-info">
@@ -52,7 +83,7 @@
                     <!-- Vista previa del siguiente ejercicio -->
                     <div class="next-preview">Siguiente: <span id="next-exercise-name">Plancha alta (60s)</span></div>
                     
-                    <!-- Círculo doble con mismo estilo moderno -->
+                    <!-- Círculo doble moderno -->
                     <div class="timer-circle-container">
                         <svg viewBox="0 0 220 220" class="timer-svg">
                             <defs>
@@ -102,7 +133,7 @@
         </div>
     </div>
 
-    <script src="data.js?v=12"></script>
-    <script src="app.js?v=12"></script>
+    <script src="data.js?v=14"></script>
+    <script src="app.js?v=14"></script>
 </body>
 </html>
