@@ -44,16 +44,33 @@ body {
 }
 
 /* ========================================================= */
-/* FONDO DE ORBES DE LUZ AMBIENTAL ANIMADOS                  */
+/* FONDO DE ORBES DE LUZ AMBIENTAL CON FUNDIDO CRUZADO SUAVE */
 /* ========================================================= */
-.ambient-light {
+.ambient-backdrop {
     position: fixed;
-    border-radius: 50%;
-    filter: blur(85px);
-    opacity: 0.6;
+    inset: 0;
     z-index: 0;
     pointer-events: none;
-    transition: background 0.9s ease, transform 0.9s ease;
+    overflow: hidden;
+}
+
+.ambient-layer {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    transition: opacity 1.2s cubic-bezier(0.22, 1, 0.36, 1);
+    will-change: opacity;
+}
+
+body.bg-default .layer-default { opacity: 1; }
+body.bg-active .layer-active { opacity: 1; }
+body.bg-rest .layer-rest { opacity: 1; }
+
+.ambient-light {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(85px);
+    opacity: 0.65;
     animation: floatOrb 10s ease-in-out infinite alternate;
 }
 
@@ -81,14 +98,14 @@ body {
     100% { transform: translate(30px, 25px) scale(1.12); }
 }
 
-body.bg-default .light-1 { background: radial-gradient(circle, #1e293b, #0f172a); }
-body.bg-default .light-2 { background: radial-gradient(circle, #1e1b4b, #090d16); }
+.layer-default .light-1 { background: radial-gradient(circle, #1e293b, #0f172a); }
+.layer-default .light-2 { background: radial-gradient(circle, #1e1b4b, #090d16); }
 
-body.bg-active .light-1 { background: radial-gradient(circle, #0A84FF, #004080); }
-body.bg-active .light-2 { background: radial-gradient(circle, #00F2FE, #002b4d); }
+.layer-active .light-1 { background: radial-gradient(circle, #0A84FF, #004080); }
+.layer-active .light-2 { background: radial-gradient(circle, #00F2FE, #002b4d); }
 
-body.bg-rest .light-1 { background: radial-gradient(circle, #FF2D55, #660019); }
-body.bg-rest .light-2 { background: radial-gradient(circle, #FF9500, #4d1900); }
+.layer-rest .light-1 { background: radial-gradient(circle, #FF2D55, #660019); }
+.layer-rest .light-2 { background: radial-gradient(circle, #FF9500, #4d1900); }
 
 /* ========================================================= */
 /* PANTALLAS Y ELEMENTOS                                     */
@@ -181,7 +198,7 @@ body.bg-rest .light-2 { background: radial-gradient(circle, #FF9500, #4d1900); }
     z-index: 3;
     pointer-events: none;
     filter: drop-shadow(0 0 8px rgba(0, 242, 254, 0.75));
-    transition: filter 0.4s ease;
+    transition: filter 0.6s ease;
 }
 
 .png-outline-canvas.rest-mode {
@@ -260,14 +277,14 @@ body.bg-rest .light-2 { background: radial-gradient(circle, #FF9500, #4d1900); }
     flex-shrink: 0; 
 }
 .timer-svg { position: absolute; width: 100%; height: 100%; overflow: visible; filter: drop-shadow(0 8px 20px rgba(0,0,0,0.35)); }
-#step-progress-ring { transition: stroke 0.4s ease; }
-.segment-arc { transition: opacity 0.35s ease; }
+#step-progress-ring { transition: stroke 0.6s ease; }
+.segment-arc { transition: opacity 0.45s ease; }
 
 .timer-indicator-wrapper { position: absolute; top: 0; left: 0; right: 0; bottom: 0; border-radius: 50%; pointer-events: none; z-index: 10; will-change: transform; }
 .timer-indicator-dot { position: absolute; top: 6.36%; left: 50%; transform: translate(-50%, -50%); width: 13px; height: 13px; background: #fff; border-radius: 50%; box-shadow: 0 0 12px #fff, 0 0 20px #00F2FE; }
 
 .timer-circle-content { position: absolute; display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; height: 100%; z-index: 5; }
-.timer-main { font-size: clamp(56px, 10vh, 82px); font-weight: 800; font-variant-numeric: tabular-nums; color: #ffffff; line-height: 1; text-shadow: 0 4px 15px rgba(0,0,0,0.4); transition: transform 0.1s ease-out; }
+.timer-main { font-size: clamp(56px, 10vh, 82px); font-weight: 800; font-variant-numeric: tabular-nums; color: #ffffff; line-height: 1; text-shadow: 0 4px 15px rgba(0,0,0,0.4); transition: transform 0.1s ease-out, color 0.6s ease; }
 .timer-main.rest { color: #ffeb3b; }
 .timer-total { font-size: 15px; color: var(--text-secondary); font-variant-numeric: tabular-nums; margin-top: 6px; font-weight: 600; opacity: 0.9; }
 
