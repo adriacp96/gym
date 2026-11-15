@@ -1,7 +1,9 @@
-// --- SISTEMA DE AUDIO (PITIDOS, VOZ GUIADA Y AUDIO DUCKING EN iOS) ---
+// --- SISTEMA DE AUDIO (PITIDOS + VOZ EN STREAMING SIN PAUSAR MÚSICA EN iOS) ---
 let isSoundEnabled = true;
 let isVoiceEnabled = true;
 let audioCtx = null;
+let keepAliveOsc = null;
+let currentVoiceAudio = null;
 
 const motivationalPhrases = [
     "¡Vamos, tú puedes!",
@@ -11,21 +13,17 @@ const motivationalPhrases = [
     "¡Aguanta fuerte, aprieta el abdomen!"
 ];
 
-// Configura la sesión de audio de iOS para que NUNCA pause tu música de fondo
-function configureIOSAudioSession(mode) {
+// Fuerza a iOS a mantener la sesión en modo 'ambient' (mezclar con Apple Music / Spotify sin pausarlos)
+function enforceAmbientAudioSession() {
     if ('audioSession' in navigator) {
         try {
-            // 'ambient': mezcla con la música al 100% de volumen
-            // 'transient': baja ligeramente la música de fondo (ducking) sin pausarla
-            navigator.audioSession.type = mode;
-        } catch (e) {
-            // Ignorar si la versión de Safari no soporta ese modo específico
-        }
+            navigator.audioSession.type = 'ambient';
+        } catch (e) {}
     }
 }
 
 function initAudio() {
-    configureIOSAudioSession('ambient');
+    enforceAmbientAudioSession();
 
     if (!audioCtx) {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -34,24 +32,32 @@ function initAudio() {
         audioCtx.resume();
     }
     
-    // Desbloqueo silencioso del canal Web Audio en iOS
-    const unlockOscillator = audioCtx.createOscillator();
-    const unlockGain = audioCtx.createGain();
-    unlockOscillator.connect(unlockGain);
-    unlockGain.connect(audioCtx.destination);
-    unlockGain.gain.value = 0.0001; 
-    unlockOscillator.start(audioCtx.currentTime);
-    unlockOscillator.stop(audioCtx.currentTime + 0.01);
+    // Oscilador subsónico inaudible continuo: mantiene vivo el canal 'ambient' durante todo el entreno
+    // para que iOS nunca tome control exclusivo ni pause la música de fondo.
+    if (!keepAliveOsc && audioCtx) {
+        try {
+            keepAliveOsc = audioCtx.createOscillator();
+            const silentGain = audioCtx.createGain();
+            keepAliveOsc.frequency.value = 1;
+            silentGain.gain.value = 0.00001; // Inaudible
+            keepAliveOsc.connect(silentGain);
+            silentGain.connect(audioCtx.destination);
+            keepAliveOsc.start();
+        } catch (e) {}
+    }
 }
 
-// Desbloqueo suave del motor de voz sin interrumpir la música
+// Prepara el reproductor HTML5 en el clic del usuario para autorizarlo en Safari iOS
 function unlockSpeech() {
-    if (!('speechSynthesis' in window)) return;
-    configureIOSAudioSession('ambient');
-    window.speechSynthesis.getVoices();
+    enforceAmbientAudioSession();
+    if (!currentVoiceAudio) {
+        currentVoiceAudio = new Audio();
+        currentVoiceAudio.playsInline = true;
+        currentVoiceAudio.volume = 1.0;
+    }
 }
 
-// Convierte abreviaturas para que la voz de iOS las lea de forma natural
+// Convierte abreviaturas para que la voz las lea de forma natural
 function formatSpeechName(name) {
     return name
         .replace(/flex\.\s*rodillas/gi, 'flexiones de rodillas')
@@ -60,49 +66,47 @@ function formatSpeechName(name) {
         .replace(/\(Derecho\)/gi, 'lado derecho');
 }
 
+// Reproduce la voz como un flujo de audio estándar mezclable (NUNCA usa speechSynthesis para no pausar la música)
 function speakText(text, forceInterrupt = false) {
-    if (!isVoiceEnabled || !('speechSynthesis' in window)) return;
+    if (!isVoiceEnabled) return;
     
-    // Evitamos hacer cancel() innecesarios porque en iOS resetea el canal de música
-    if (forceInterrupt && window.speechSynthesis.speaking) {
-        window.speechSynthesis.cancel();
+    initAudio();
+    enforceAmbientAudioSession();
+
+    if (!currentVoiceAudio) {
+        currentVoiceAudio = new Audio();
+        currentVoiceAudio.playsInline = true;
     }
 
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = 'es-ES';
-    utterance.rate = 1.05;
-    utterance.pitch = 1.0;
-    utterance.volume = 1.0;
+    if (!forceInterrupt && !currentVoiceAudio.paused) {
+        return; // Si ya está hablando y no es prioritario, no solapar
+    }
 
-    const voices = window.speechSynthesis.getVoices();
-    const spanishVoice = voices.find(v => v.lang.startsWith('es'));
-    if (spanishVoice) utterance.voice = spanishVoice;
+    try {
+        currentVoiceAudio.pause();
+    } catch (e) {}
 
-    // Cuando empieza a hablar: activa el modo "ducking" (baja un poco la música sin pararla)
-    utterance.onstart = () => {
-        configureIOSAudioSession('transient');
-    };
+    // Generador TTS ligero en español que se reproduce como audio web normal (se mezcla con tu música)
+    const encodedText = encodeURIComponent(text);
+    const ttsUrl = `https://translate.googleapis.com/translate_tts?ie=UTF-8&q=${encodedText}&tl=es&client=tw-ob`;
 
-    // Cuando termina de hablar: devuelve la música al 100% de su volumen
-    utterance.onend = () => {
-        configureIOSAudioSession('ambient');
-    };
+    currentVoiceAudio.src = ttsUrl;
+    currentVoiceAudio.volume = 1.0;
 
-    utterance.onerror = () => {
-        configureIOSAudioSession('ambient');
-    };
-
-    window.speechSynthesis.speak(utterance);
+    // Mientras habla, bajamos sutilmente los pitidos si coinciden y aseguramos modo ambient
+    const playPromise = currentVoiceAudio.play();
+    if (playPromise !== undefined) {
+        playPromise.catch(() => {
+            // Si el usuario está totalmente offline sin caché, ignora silenciosamente sin cortar la música
+        });
+    }
 }
 
 function playBeep(type) {
     if (!isSoundEnabled || !audioCtx) return;
     if (audioCtx.state === 'suspended') audioCtx.resume();
 
-    // Mantiene la sesión en modo ambiente para que el pitido se mezcle con tu música
-    if (!window.speechSynthesis || !window.speechSynthesis.speaking) {
-        configureIOSAudioSession('ambient');
-    }
+    enforceAmbientAudioSession();
 
     const oscillator = audioCtx.createOscillator();
     const gainNode = audioCtx.createGain();
@@ -112,14 +116,14 @@ function playBeep(type) {
     if (type === 'countdown') {
         oscillator.type = 'sine';
         oscillator.frequency.setValueAtTime(440, audioCtx.currentTime); 
-        gainNode.gain.setValueAtTime(0.7, audioCtx.currentTime);
+        gainNode.gain.setValueAtTime(0.65, audioCtx.currentTime);
         gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.18);
         oscillator.start(audioCtx.currentTime);
         oscillator.stop(audioCtx.currentTime + 0.18);
     } else if (type === 'start') {
         oscillator.type = 'triangle';
         oscillator.frequency.setValueAtTime(880, audioCtx.currentTime); 
-        gainNode.gain.setValueAtTime(0.9, audioCtx.currentTime);
+        gainNode.gain.setValueAtTime(0.85, audioCtx.currentTime);
         gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.38);
         oscillator.start(audioCtx.currentTime);
         oscillator.stop(audioCtx.currentTime + 0.38);
@@ -168,7 +172,7 @@ const countdownDisplay = document.getElementById('countdown-display');
 
 function initApp() {
     document.body.className = 'bg-default';
-    configureIOSAudioSession('ambient');
+    enforceAmbientAudioSession();
 
     workoutsData.forEach((workout, index) => {
         const card = document.createElement('div');
@@ -196,7 +200,8 @@ function initApp() {
     btnCancelPlay.addEventListener('click', endWorkout);
     
     btnStartPlay.addEventListener('click', () => {
-        initAudio(); 
+        initAudio();
+        unlockSpeech();
         btnStartPlay.style.display = 'none';
         btnCancelPlay.style.display = 'none';
         countdownDisplay.style.display = 'block';
@@ -238,10 +243,10 @@ function initApp() {
         btnVoice.innerText = isVoiceEnabled ? "🗣️ Guía ON" : "🤐 Guía OFF";
         btnVoice.classList.toggle('off', !isVoiceEnabled);
         if (isVoiceEnabled) {
+            unlockSpeech();
             speakText("Guía de voz activada", true);
-        } else if ('speechSynthesis' in window) {
-            window.speechSynthesis.cancel();
-            configureIOSAudioSession('ambient');
+        } else if (currentVoiceAudio) {
+            currentVoiceAudio.pause();
         }
     });
 }
@@ -398,7 +403,6 @@ function loadStep(index, isFirstAfterCountdown = false) {
     
     playBeep('start');
     
-    // Si es el primer ejercicio justo después del 3,2,1 (donde ya dijo el nombre), solo dice "¡Vamos!"
     if (step.isRest) {
         speakText("Descanso. Recupera el aliento.", true);
     } else if (isFirstAfterCountdown) {
@@ -450,7 +454,6 @@ function updateTimer() {
         const step = currentRoutine[currentStepIndex];
         const halfTime = Math.floor(currentStepDuration / 2);
 
-        // --- FRASES GUIADAS DURANTE EL EJERCICIO O DESCANSO ---
         if (!step.isRest) {
             if (currentStepDuration >= 20 && timeRemainingInStep === halfTime) {
                 const randomPhrase = motivationalPhrases[Math.floor(Math.random() * motivationalPhrases.length)];
@@ -459,7 +462,6 @@ function updateTimer() {
                 speakText("¡Últimos diez segundos, aguanta!", false);
             }
         } else {
-            // Durante el descanso: Aviso anticipado cuando faltan 5 segundos
             if (timeRemainingInStep === 5) {
                 const nextEx = getNextRealExercise(currentStepIndex);
                 if (nextEx) {
@@ -539,8 +541,7 @@ function skipStep() {
 function endWorkout() {
     if (timerInterval) clearInterval(timerInterval);
     if (prestartInterval) clearInterval(prestartInterval);
-    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
-    configureIOSAudioSession('ambient');
+    if (currentVoiceAudio) currentVoiceAudio.pause();
     screenWorkout.classList.remove('active');
     screenSelector.classList.add('active');
     document.body.className = 'bg-default';
