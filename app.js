@@ -56,8 +56,10 @@ let currentStepIndex = 0;
 let timeRemainingInStep = 0;
 let totalTimeRemaining = 0;
 let timerInterval = null;
+let prestartInterval = null;
 let isPaused = false;
 
+// Elementos del DOM
 const screenSelector = document.getElementById('screen-selector');
 const screenWorkout = document.getElementById('screen-workout');
 const listContainer = document.getElementById('workout-list');
@@ -71,12 +73,14 @@ const btnSound = document.getElementById('btn-sound');
 const imgGif = document.getElementById('exercise-gif');
 const textGif = document.getElementById('gif-text');
 
+// NUEVOS ELEMENTOS: Capa de preparación
+const readyOverlay = document.getElementById('ready-overlay');
+const btnStartPlay = document.getElementById('btn-start-play');
+const btnCancelPlay = document.getElementById('btn-cancel-play');
+const countdownDisplay = document.getElementById('countdown-display');
+
 function initApp() {
-    // Establecer fondo inicial
     document.body.className = 'bg-default';
-    
-    // Le damos clase especial al botón de salir para el nuevo diseño
-    btnExit.classList.add('exit');
 
     workoutsData.forEach((workout, index) => {
         const card = document.createElement('div');
@@ -84,7 +88,7 @@ function initApp() {
         card.innerHTML = `
             <div class="workout-title">${workout.title}</div>
             <div class="workout-meta">${workout.description}</div>
-            <button class="btn" data-index="${index}">Empezar</button>
+            <button class="btn" data-index="${index}">Seleccionar</button>
         `;
         listContainer.appendChild(card);
     });
@@ -92,13 +96,48 @@ function initApp() {
     document.querySelectorAll('.workout-card .btn').forEach(button => {
         button.addEventListener('click', (e) => {
             initAudio(); 
-            startWorkout(e.target.getAttribute('data-index'));
+            prepareWorkout(e.target.getAttribute('data-index'));
         });
     });
 
     btnPause.addEventListener('click', togglePause);
     btnExit.addEventListener('click', endWorkout);
     
+    // Si te arrepientes antes de darle a Play
+    btnCancelPlay.addEventListener('click', endWorkout);
+    
+    // Al pulsar "Empezar" (Play)
+    btnStartPlay.addEventListener('click', () => {
+        initAudio(); // Refuerza desbloqueo audio
+        btnStartPlay.style.display = 'none';
+        btnCancelPlay.style.display = 'none';
+        countdownDisplay.style.display = 'block';
+
+        let count = 3;
+        countdownDisplay.innerText = count;
+        
+        // Reiniciar animación CSS perfectamente
+        countdownDisplay.style.animation = 'none';
+        void countdownDisplay.offsetWidth; // Fuerza el refresco del navegador
+        countdownDisplay.style.animation = 'popCount 1s infinite';
+
+        playBeep('countdown'); // Pip (3)
+
+        prestartInterval = setInterval(() => {
+            count--;
+            if (count > 0) {
+                countdownDisplay.innerText = count;
+                playBeep('countdown'); // Pip (2, 1)
+            } else {
+                // Termina la cuenta y arranca el entrenamiento
+                clearInterval(prestartInterval);
+                readyOverlay.style.display = 'none';
+                loadStep(currentStepIndex); // Reproduce el Pip largo de Start
+                timerInterval = setInterval(updateTimer, 1000);
+            }
+        }, 1000);
+    });
+
     btnSound.addEventListener('click', () => {
         isSoundEnabled = !isSoundEnabled;
         btnSound.innerText = isSoundEnabled ? "🔊 Sonido ON" : "🔇 Sonido OFF";
@@ -116,25 +155,42 @@ function calculateTotalTime() {
     return currentRoutine.reduce((total, step) => total + step.duration, 0);
 }
 
-function startWorkout(index) {
+// NUEVA FUNCIÓN: Prepara la UI pero espera a que pulses Play
+function prepareWorkout(index) {
     const workout = workoutsData[index];
     currentRoutine = workout.routine;
     elWorkoutTitle.innerText = workout.title;
 
     screenSelector.classList.remove('active');
     screenWorkout.classList.add('active');
+    document.body.className = 'bg-default'; // Fondo inicial
 
     currentStepIndex = 0;
     totalTimeRemaining = calculateTotalTime();
     isPaused = false;
     btnPause.innerText = "Pausar";
     
-    loadStep(currentStepIndex);
-    
+    // Resetea visualmente el reloj para que no se vea el del entrenamiento anterior
+    elExerciseName.innerText = "¡Prepárate!";
+    elTimerMain.innerText = "00";
+    elTimerMain.classList.remove('rest');
+    elTimerTotal.innerText = formatTime(totalTimeRemaining);
+    imgGif.style.display = "none";
+    textGif.style.display = "block";
+    textGif.innerHTML = "Pulsa Play cuando estés listo";
+
+    // Muestra la capa cristal y el botón
+    readyOverlay.style.display = 'flex';
+    btnStartPlay.style.display = 'block';
+    btnCancelPlay.style.display = 'block';
+    countdownDisplay.style.display = 'none';
+
+    // Limpia cualquier intervalo que pudiera haber quedado colgado
     if (timerInterval) clearInterval(timerInterval);
-    timerInterval = setInterval(updateTimer, 1000);
+    if (prestartInterval) clearInterval(prestartInterval);
 }
 
+// Carga el paso de la rutina, se llama después del Play (3,2,1)
 function loadStep(index) {
     if (index >= currentRoutine.length) {
         finishWorkout();
@@ -147,13 +203,12 @@ function loadStep(index) {
     
     playBeep('start');
     
-    // CAMBIO DE FONDO ANIMADO SEGÚN EL ESTADO
     if (step.isRest) {
         elTimerMain.classList.add('rest');
-        document.body.className = 'bg-rest'; // Fondo rojo
+        document.body.className = 'bg-rest';
     } else {
         elTimerMain.classList.remove('rest');
-        document.body.className = 'bg-active'; // Fondo azul
+        document.body.className = 'bg-active';
     }
 
     if (step.gif && step.gif !== "") {
@@ -178,7 +233,6 @@ function updateTimer() {
         totalTimeRemaining--;
         updateUI();
         
-        // Pequeño efecto visual en el reloj cada segundo (latido)
         elTimerMain.style.transform = 'scale(1.05)';
         setTimeout(() => elTimerMain.style.transform = 'scale(1)', 100);
 
@@ -200,11 +254,9 @@ function togglePause() {
     isPaused = !isPaused;
     btnPause.innerText = isPaused ? "Reanudar" : "Pausar";
     
-    // Si pausamos, el fondo se pone oscuro para indicar pausa
     if (isPaused) {
         document.body.className = 'bg-default';
     } else {
-        // Al reanudar, vuelve al color que le toque (ejercicio o descanso)
         const step = currentRoutine[currentStepIndex];
         document.body.className = step.isRest ? 'bg-rest' : 'bg-active';
     }
@@ -212,9 +264,10 @@ function togglePause() {
 
 function endWorkout() {
     if (timerInterval) clearInterval(timerInterval);
+    if (prestartInterval) clearInterval(prestartInterval);
     screenWorkout.classList.remove('active');
     screenSelector.classList.add('active');
-    document.body.className = 'bg-default'; // Restaurar fondo de menú
+    document.body.className = 'bg-default';
 }
 
 function finishWorkout() {
