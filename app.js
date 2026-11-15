@@ -114,7 +114,7 @@ const btnCancelPlay = document.getElementById('btn-cancel-play');
 const countdownDisplay = document.getElementById('countdown-display');
 
 // =========================================================
-// MOTOR DE TRAZADO PERIMETRAL CONTINUO (MOORE-NEIGHBOR)
+// MOTOR DE TRAZADO PERIMETRAL EXACTO (MOORE-NEIGHBOR)
 // =========================================================
 const perimeterPathCache = {};
 let activePerimeterData = null;
@@ -124,55 +124,51 @@ function extractOrderedPerimeterPath(imgEl) {
     const src = imgEl.getAttribute('src');
     if (!src || !imgEl.complete || imgEl.naturalWidth === 0) return null;
 
-    const rect = floatingStage.getBoundingClientRect();
+    // Usar offsetWidth/offsetHeight para ignorar el transform: scale() de la animación de entrada
+    const stageW = floatingStage.offsetWidth;
+    const stageH = floatingStage.offsetHeight;
+    if (stageW === 0 || stageH === 0) return null;
+
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const w = Math.max(1, Math.round(rect.width * dpr));
-    const h = Math.max(1, Math.round(rect.height * dpr));
+    const w = Math.max(1, Math.round(stageW * dpr));
+    const h = Math.max(1, Math.round(stageH * dpr));
     const cacheKey = `${src}_${w}x${h}`;
 
     if (perimeterPathCache[cacheKey]) {
         return perimeterPathCache[cacheKey];
     }
 
-    // Calcular encaje exacto (object-fit: contain) con margen para el grosor de línea
-    const padding = Math.ceil(6 * dpr);
-    const availW = Math.max(1, w - padding * 2);
-    const availH = Math.max(1, h - padding * 2);
-
+    // Cálculo idéntico al object-fit: contain del navegador sin márgenes ni desplazamientos
     const imgRatio = imgEl.naturalWidth / imgEl.naturalHeight;
-    const boxRatio = availW / availH;
+    const boxRatio = w / h;
     let drawW, drawH, drawX, drawY;
     if (imgRatio > boxRatio) {
-        drawW = availW;
-        drawH = availW / imgRatio;
-        drawX = padding;
-        drawY = padding + (availH - drawH) / 2;
+        drawW = w;
+        drawH = w / imgRatio;
+        drawX = 0;
+        drawY = (h - drawH) / 2;
     } else {
-        drawH = availH;
-        drawW = availH * imgRatio;
-        drawX = padding + (availW - drawW) / 2;
-        drawY = padding;
+        drawH = h;
+        drawW = h * imgRatio;
+        drawX = (w - drawW) / 2;
+        drawY = 0;
     }
 
-    // Dibujar imagen en canvas temporal con ligera dilatación para unir huecos finos (ej. cordones o dedos)
     const tempCanvas = document.createElement('canvas');
     tempCanvas.width = w;
     tempCanvas.height = h;
     const tCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
 
-    const dilate = Math.max(1.5, 2 * dpr);
-    for (let i = 0; i < 8; i++) {
-        const a = (i / 8) * Math.PI * 2;
-        tCtx.drawImage(imgEl, drawX + Math.cos(a) * dilate, drawY + Math.sin(a) * dilate, drawW, drawH);
-    }
+    // Dibujar exactamente en la misma posición y tamaño que el <img>
+    tCtx.drawImage(imgEl, drawX, drawY, drawW, drawH);
 
     const imgData = tCtx.getImageData(0, 0, w, h).data;
     const isOpaque = (x, y) => {
         if (x < 0 || y < 0 || x >= w || y >= h) return false;
-        return imgData[(y * w + x) * 4 + 3] > 60;
+        return imgData[(y * w + x) * 4 + 3] > 80;
     };
 
-    // Buscar el punto inicial en la parte superior central (como las 12 en punto de un reloj)
+    // Buscar punto inicial en la parte superior central (12 en punto)
     let startX = -1, startY = -1;
     const centerX = Math.floor(w / 2);
     outerLoop:
@@ -195,7 +191,7 @@ function extractOrderedPerimeterPath(imgEl) {
 
     if (startX === -1) return null;
 
-    // Direcciones de vecindad de Moore (8 vecinos en sentido horario)
+    // 8 vecinos en sentido horario (Moore-Neighbor tracing)
     const dirs = [
         [0, -1],  // 0: N
         [1, -1],  // 1: NE
@@ -210,21 +206,20 @@ function extractOrderedPerimeterPath(imgEl) {
     const rawPoints = [];
     let cx = startX;
     let cy = startY;
-    let backtrackDir = 0; // Venimos desde arriba (Norte)
+    let backtrackDir = 0;
     const maxSteps = w * h;
     let steps = 0;
 
     do {
-        rawPoints.push({ x: cx, y: cy });
+        // +0.5 para centrar el trazo exactamente en el borde del píxel
+        rawPoints.push({ x: cx + 0.5, y: cy + 0.5 });
         let foundNext = false;
-        // Empezar búsqueda desde el siguiente vecino en sentido horario tras el punto vacío anterior
         const startSearch = (backtrackDir + 1) % 8;
         for (let i = 0; i < 8; i++) {
             const dirIdx = (startSearch + i) % 8;
             const nx = cx + dirs[dirIdx][0];
             const ny = cy + dirs[dirIdx][1];
             if (isOpaque(nx, ny)) {
-                // La dirección inversa desde donde entramos al nuevo píxel
                 backtrackDir = (dirIdx + 4) % 8;
                 cx = nx;
                 cy = ny;
@@ -238,8 +233,8 @@ function extractOrderedPerimeterPath(imgEl) {
 
     if (rawPoints.length < 10) return null;
 
-    // Submuestrear y suavizar los puntos para obtener una curva fluida sin dientes de sierra
-    const sampleStep = Math.max(2, Math.round(2.5 * dpr));
+    // Suavizado ligero sin encoger la silueta
+    const sampleStep = Math.max(1, Math.round(1.5 * dpr));
     const sampled = [];
     for (let i = 0; i < rawPoints.length; i += sampleStep) {
         sampled.push(rawPoints[i]);
@@ -248,21 +243,18 @@ function extractOrderedPerimeterPath(imgEl) {
     const smoothed = [];
     const n = sampled.length;
     for (let i = 0; i < n; i++) {
-        const pPrev2 = sampled[(i - 2 + n) % n];
-        const pPrev1 = sampled[(i - 1 + n) % n];
-        const pCurr  = sampled[i];
-        const pNext1 = sampled[(i + 1) % n];
-        const pNext2 = sampled[(i + 2) % n];
+        const pPrev = sampled[(i - 1 + n) % n];
+        const pCurr = sampled[i];
+        const pNext = sampled[(i + 1) % n];
         smoothed.push({
-            x: (pPrev2.x + pPrev1.x * 2 + pCurr.x * 3 + pNext1.x * 2 + pNext2.x) / 9,
-            y: (pPrev2.y + pPrev1.y * 2 + pCurr.y * 3 + pNext1.y * 2 + pNext2.y) / 9
+            x: (pPrev.x + pCurr.x * 2 + pNext.x) / 4,
+            y: (pPrev.y + pCurr.y * 2 + pNext.y) / 4
         });
     }
 
-    // Cerrar el circuito uniendo el último punto con el inicial
+    // Cerrar el circuito en el mismo punto de inicio
     smoothed.push({ x: smoothed[0].x, y: smoothed[0].y });
 
-    // Calcular distancias acumuladas a lo largo de todo el perímetro
     const cumLengths = [0];
     let totalLength = 0;
     for (let i = 1; i < smoothed.length; i++) {
@@ -271,19 +263,20 @@ function extractOrderedPerimeterPath(imgEl) {
         cumLengths.push(totalLength);
     }
 
-    const result = { points: smoothed, cumLengths, totalLength, dpr };
+    const result = { points: smoothed, cumLengths, totalLength, dpr, w, h };
     perimeterPathCache[cacheKey] = result;
     return result;
 }
 
 function renderPngDynamicOutline(fractionRemaining) {
     lastFractionRendered = fractionRemaining;
-    const rect = floatingStage.getBoundingClientRect();
-    if (rect.width === 0 || rect.height === 0) return;
+    const stageW = floatingStage.offsetWidth;
+    const stageH = floatingStage.offsetHeight;
+    if (stageW === 0 || stageH === 0) return;
 
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const w = Math.round(rect.width * dpr);
-    const h = Math.round(rect.height * dpr);
+    const w = Math.round(stageW * dpr);
+    const h = Math.round(stageH * dpr);
 
     if (outlineCanvas.width !== w || outlineCanvas.height !== h) {
         outlineCanvas.width = w;
@@ -300,13 +293,13 @@ function renderPngDynamicOutline(fractionRemaining) {
 
     const { points, cumLengths, totalLength } = activePerimeterData;
     const isRest = currentRoutine[currentStepIndex]?.isRest;
-    const lineWidth = Math.max(3, 3.6 * dpr);
+    const lineWidth = Math.max(2.5, 3 * dpr);
 
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     ctx.lineWidth = lineWidth;
 
-    // 1. Trazo guía completo tenue (mismo estilo que el anillo de fondo del reloj)
+    // 1. Guía perimetral tenue
     ctx.beginPath();
     ctx.moveTo(points[0].x, points[0].y);
     for (let i = 1; i < points.length; i++) {
@@ -315,7 +308,7 @@ function renderPngDynamicOutline(fractionRemaining) {
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.14)';
     ctx.stroke();
 
-    // 2. Trazo activo continuo que recorre el perímetro desde el punto inicial hasta cerrarse
+    // 2. Trazo activo continuo exacto sobre el borde del dibujo
     const clamped = Math.max(0, Math.min(1, fractionRemaining));
     const targetLength = totalLength * clamped;
 
@@ -341,7 +334,6 @@ function renderPngDynamicOutline(fractionRemaining) {
                 tipX = points[i].x;
                 tipY = points[i].y;
             } else {
-                // Interpolación exacta entre vértices para movimiento ultra fluido
                 const segStart = cumLengths[i - 1];
                 const segLen = cumLengths[i] - segStart;
                 const t = segLen > 0 ? (targetLength - segStart) / segLen : 0;
@@ -355,10 +347,10 @@ function renderPngDynamicOutline(fractionRemaining) {
         ctx.strokeStyle = grad;
         ctx.stroke();
 
-        // Pequeño punto luminoso en la punta del trazado mientras avanza
+        // Punto luminoso en el extremo que recorre la silueta
         if (clamped < 0.995) {
             ctx.beginPath();
-            ctx.arc(tipX, tipY, lineWidth * 0.75, 0, Math.PI * 2);
+            ctx.arc(tipX, tipY, lineWidth * 0.7, 0, Math.PI * 2);
             ctx.fillStyle = '#ffffff';
             ctx.fill();
         }
@@ -625,13 +617,14 @@ function loadStep(index) {
     activePerimeterData = null;
     if (step.png && step.png !== "") {
         floatingStage.classList.remove('slide-in-right');
+        floatingStage.style.display = "flex";
+        textGif.style.display = "none";
+
         imgGif.onload = () => {
             activePerimeterData = extractOrderedPerimeterPath(imgGif);
             renderPngDynamicOutline(1);
         };
         imgGif.src = step.png;
-        floatingStage.style.display = "flex";
-        textGif.style.display = "none";
         
         if (imgGif.complete && imgGif.naturalWidth > 0) {
             activePerimeterData = extractOrderedPerimeterPath(imgGif);
@@ -708,7 +701,6 @@ function renderContinuousFrame(remainingMs) {
         const offset = INNER_C * (1 - fractionRemaining);
         elStepRing.style.strokeDashoffset = offset;
 
-        // Recorrer el contorno perimetral del dibujo en sincronía continua
         renderPngDynamicOutline(fractionRemaining);
     }
 }
