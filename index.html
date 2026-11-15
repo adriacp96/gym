@@ -14,13 +14,25 @@
     <link rel="icon" type="image/png" href="appicon.png">
     <link rel="manifest" href="manifest.json">
 
-    <link rel="stylesheet" href="styles.css?v=19">
+    <link rel="stylesheet" href="styles.css?v=21">
 </head>
 <body class="bg-default">
 
-    <!-- Fondos de luz ambiental animados (Orbes) -->
-    <div class="ambient-light light-1"></div>
-    <div class="ambient-light light-2"></div>
+    <!-- Fondos de luz ambiental con fundido cruzado suave entre estados -->
+    <div class="ambient-backdrop">
+        <div class="ambient-layer layer-default">
+            <div class="ambient-light light-1"></div>
+            <div class="ambient-light light-2"></div>
+        </div>
+        <div class="ambient-layer layer-active">
+            <div class="ambient-light light-1"></div>
+            <div class="ambient-light light-2"></div>
+        </div>
+        <div class="ambient-layer layer-rest">
+            <div class="ambient-light light-1"></div>
+            <div class="ambient-light light-2"></div>
+        </div>
+    </div>
 
     <!-- Pantalla 1: Selector de Ejercicios -->
     <div id="screen-selector" class="screen active">
@@ -113,7 +125,7 @@
         </div>
     </div>
 
-    <script src="data.js?v=19"></script>
-    <script src="app.js?v=19"></script>
+    <script src="data.js?v=21"></script>
+    <script src="app.js?v=21"></script>
 </body>
 </html>
