@@ -1,12 +1,13 @@
-// --- SISTEMA DE AUDIO DEFINITIVO PARA iOS (WEB AUDIO API + CORS TTS) ---
+// --- MOTOR DE AUDIO GARANTIZADO PARA iOS (WEB AUDIO BUFFER + MULTI-ENDPOINT BASE64/CORS) ---
 let isSoundEnabled = true;
 let isVoiceEnabled = true;
 let audioCtx = null;
 let keepAliveOsc = null;
 let currentVoiceSource = null;
 
-// Caché en memoria RAM para reproducir las frases al instante
+// Almacén en memoria RAM de los audios ya decodificados para reproducción instantánea
 const voiceBufferCache = new Map();
+const pendingDownloads = new Map();
 
 const motivationalPhrases = [
     "¡Vamos, tú puedes!",
@@ -16,9 +17,9 @@ const motivationalPhrases = [
     "¡Aguanta fuerte, aprieta el abdomen!"
 ];
 
-// Controla el mezclador nativo de iOS:
-// 'ambient' -> música al 100% mezclada con la web
-// 'transient' -> baja ligeramente la música de fondo (ducking) mientras habla sin pausarla
+// Configura el mezclador de iOS:
+// 'ambient' -> mezcla con Spotify/Apple Music al 100%
+// 'transient' -> atenúa un poco la música mientras habla sin pausarla
 function setIOSAudioSession(mode) {
     if ('audioSession' in navigator) {
         try {
@@ -27,17 +28,28 @@ function setIOSAudioSession(mode) {
     }
 }
 
+// IMPORTANTE: En iOS esta función DEBE ejecutarse de forma síncrona dentro de un click/touchstart
 function initAudio() {
     setIOSAudioSession('ambient');
 
     if (!audioCtx) {
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        audioCtx = new AudioContextClass();
     }
     if (audioCtx.state === 'suspended') {
         audioCtx.resume();
     }
     
-    // Mantiene el canal de audio abierto en el iPhone durante todo el entrenamiento
+    // Desbloqueo físico inmediato con un buffer vacío en el evento de toque del usuario
+    try {
+        const unlockBuffer = audioCtx.createBuffer(1, 1, 22050);
+        const unlockSource = audioCtx.createBufferSource();
+        unlockSource.buffer = unlockBuffer;
+        unlockSource.connect(audioCtx.destination);
+        unlockSource.start(0);
+    } catch (e) {}
+
+    // Oscilador subsónico continuo para que iOS jamás duerma el canal WebAudio
     if (!keepAliveOsc && audioCtx) {
         try {
             keepAliveOsc = audioCtx.createOscillator();
@@ -51,6 +63,32 @@ function initAudio() {
     }
 }
 
+// Convierte un string Base64 en un ArrayBuffer puro para Safari
+function base64ToArrayBuffer(base64) {
+    const cleanBase64 = base64.replace(/^data:audio\/\w+;base64,/, '');
+    const binaryString = window.atob(cleanBase64);
+    const len = binaryString.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+    }
+    return bytes.buffer;
+}
+
+// Decodifica un ArrayBuffer a AudioBuffer compatible con todas las versiones de iOS Safari
+function decodeBufferForIOS(arrayBuffer) {
+    return new Promise((resolve, reject) => {
+        if (!audioCtx) initAudio();
+        // Clonamos el buffer porque Safari destruye el original al decodificar
+        const bufferCopy = arrayBuffer.slice(0);
+        audioCtx.decodeAudioData(
+            bufferCopy,
+            (decoded) => resolve(decoded),
+            (err) => reject(err)
+        );
+    });
+}
+
 // Convierte abreviaturas para que la voz las pronuncie completas
 function formatSpeechName(name) {
     return name
@@ -60,48 +98,87 @@ function formatSpeechName(name) {
         .replace(/\(Derecho\)/gi, 'lado derecho');
 }
 
-// Descarga el audio de voz desde servidores con CORS habilitado (*) y lo decodifica en el AudioContext
+// Descarga el audio probando 4 proveedores CORS/Base64 independientes hasta obtener el AudioBuffer
 async function getVoiceBuffer(text) {
     if (voiceBufferCache.has(text)) {
         return voiceBufferCache.get(text);
     }
-
-    initAudio();
-    const encoded = encodeURIComponent(text);
-    const googleUrl = `https://translate.googleapis.com/translate_tts?ie=UTF-8&tl=es&client=tw-ob&q=${encoded}`;
-
-    // 1. StreamElements API (Voz neural Conchita/Enrique con Access-Control-Allow-Origin: *)
-    // 2. Proxy CORS de respaldo por si falla el primero
-    const endpoints = [
-        `https://api.streamelements.com/kappa/v2/speech?voice=Conchita&text=${encoded}`,
-        `https://api.allorigins.win/raw?url=${encodeURIComponent(googleUrl)}`,
-        `https://corsproxy.io/?${encodeURIComponent(googleUrl)}`
-    ];
-
-    for (const url of endpoints) {
-        try {
-            const response = await fetch(url);
-            if (!response.ok) continue;
-
-            const arrayBuffer = await response.arrayBuffer();
-            if (arrayBuffer.byteLength < 500) continue;
-
-            // Decodificación compatible con todas las versiones de Safari iOS
-            const audioBuffer = await new Promise((resolve, reject) => {
-                audioCtx.decodeAudioData(arrayBuffer.slice(0), resolve, reject);
-            });
-
-            voiceBufferCache.set(text, audioBuffer);
-            return audioBuffer;
-        } catch (e) {
-            // Si un servidor falla, pasa automáticamente al siguiente
-        }
+    if (pendingDownloads.has(text)) {
+        return pendingDownloads.get(text);
     }
-    return null;
+
+    const downloadTask = (async () => {
+        const encoded = encodeURIComponent(text);
+
+        // Proveedor 1: TikTok / Weilbyte TTS API (Devuelve JSON con Base64 -> inmune a bloqueos de audio en Safari)
+        try {
+            const res1 = await fetch('https://tiktok-tts.weilnet.workers.dev/api/generation', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text: text, voice: 'es_002' })
+            });
+            if (res1.ok) {
+                const json1 = await res1.json();
+                if (json1 && json1.data) {
+                    const ab = base64ToArrayBuffer(json1.data);
+                    const decoded = await decodeBufferForIOS(ab);
+                    voiceBufferCache.set(text, decoded);
+                    return decoded;
+                }
+            }
+        } catch (e) {}
+
+        // Proveedor 2: Microsoft Edge Neural TTS API (Voz Álvaro/Elvira con CORS * habilitado)
+        try {
+            const res2 = await fetch(`https://tts.travisvn.com/?text=${encoded}&voice=es-ES-AlvaroNeural`);
+            if (res2.ok) {
+                const ab = await res2.arrayBuffer();
+                if (ab.byteLength > 500) {
+                    const decoded = await decodeBufferForIOS(ab);
+                    voiceBufferCache.set(text, decoded);
+                    return decoded;
+                }
+            }
+        } catch (e) {}
+
+        // Proveedor 3: Google Translate TTS vía CodeTabs CORS Proxy
+        try {
+            const googleUrl = `https://translate.googleapis.com/translate_tts?ie=UTF-8&tl=es&client=tw-ob&q=${encoded}`;
+            const res3 = await fetch(`https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(googleUrl)}`);
+            if (res3.ok) {
+                const ab = await res3.arrayBuffer();
+                if (ab.byteLength > 500) {
+                    const decoded = await decodeBufferForIOS(ab);
+                    voiceBufferCache.set(text, decoded);
+                    return decoded;
+                }
+            }
+        } catch (e) {}
+
+        // Proveedor 4: StreamElements API
+        try {
+            const res4 = await fetch(`https://api.streamelements.com/kappa/v2/speech?voice=Conchita&text=${encoded}`);
+            if (res4.ok) {
+                const ab = await res4.arrayBuffer();
+                if (ab.byteLength > 500) {
+                    const decoded = await decodeBufferForIOS(ab);
+                    voiceBufferCache.set(text, decoded);
+                    return decoded;
+                }
+            }
+        } catch (e) {}
+
+        return null;
+    })();
+
+    pendingDownloads.set(text, downloadTask);
+    const result = await downloadTask;
+    pendingDownloads.delete(text);
+    return result;
 }
 
-// Pre-carga en segundo plano todas las frases del entrenamiento al seleccionarlo
-function preloadWorkoutVoices(routine) {
+// Pre-descarga todos los audios en memoria RAM para que no haya retardo durante el ejercicio
+async function preloadWorkoutVoices(routine) {
     if (!routine) return;
     const phrases = new Set([
         "¡Vamos!",
@@ -125,12 +202,18 @@ function preloadWorkoutVoices(routine) {
         }
     });
 
-    phrases.forEach(phrase => {
-        getVoiceBuffer(phrase);
-    });
+    const list = Array.from(phrases);
+    // Descargamos primero las frases iniciales críticas
+    if (routine[0]) {
+        const firstClean = formatSpeechName(routine[0].name);
+        await getVoiceBuffer(`Prepárate para ${firstClean}`);
+        await getVoiceBuffer("¡Vamos!");
+    }
+    // El resto se descarga en segundo plano
+    list.forEach(p => getVoiceBuffer(p));
 }
 
-// Reproduce la voz exactamente por el mismo canal WebAudio que los pitidos
+// Reproduce el buffer de voz por el mismo canal exacto que los pitidos
 async function speakText(text, forceInterrupt = false) {
     if (!isVoiceEnabled) return;
 
@@ -163,7 +246,7 @@ async function speakText(text, forceInterrupt = false) {
         const gainNode = audioCtx.createGain();
 
         source.buffer = buffer;
-        gainNode.gain.value = 1.6; // Volumen claro y potente para que destaque sobre la música
+        gainNode.gain.value = 1.8; // Volumen alto y claro sobre la música
 
         source.connect(gainNode);
         gainNode.connect(audioCtx.destination);
@@ -173,7 +256,7 @@ async function speakText(text, forceInterrupt = false) {
         source.onended = () => {
             if (currentVoiceSource === source) {
                 currentVoiceSource = null;
-                // Restaura el volumen de tu música al 100% en cuanto termina la frase
+                // Devuelve tu música al 100% de volumen en cuanto termina la frase
                 setIOSAudioSession('ambient');
             }
         };
@@ -258,6 +341,11 @@ function initApp() {
     document.body.className = 'bg-default';
     setIOSAudioSession('ambient');
 
+    // Desbloquea el AudioContext en el primer toque en cualquier parte de la pantalla del iPhone
+    document.addEventListener('touchstart', () => {
+        initAudio();
+    }, { once: true, passive: true });
+
     workoutsData.forEach((workout, index) => {
         const card = document.createElement('div');
         card.className = 'workout-card';
@@ -313,26 +401,31 @@ function initApp() {
 
     // Botón de Pitidos ON/OFF
     btnSound.addEventListener('click', () => {
+        initAudio();
         isSoundEnabled = !isSoundEnabled;
         btnSound.innerText = isSoundEnabled ? "🔊 Pitidos ON" : "🔇 Pitidos OFF";
         btnSound.classList.toggle('off', !isSoundEnabled);
-        if (isSoundEnabled) initAudio();
+        if (isSoundEnabled) playBeep('countdown');
     });
 
-    // Botón de Voz Guiada ON/OFF
-    btnVoice.addEventListener('click', () => {
+    // Botón de Voz Guiada ON/OFF (Con prueba sonora inmediata al tocarlo)
+    btnVoice.addEventListener('click', async () => {
         initAudio();
         isVoiceEnabled = !isVoiceEnabled;
-        btnVoice.innerText = isVoiceEnabled ? "🗣️ Guía ON" : "🤐 Guía OFF";
         btnVoice.classList.toggle('off', !isVoiceEnabled);
         if (isVoiceEnabled) {
-            speakText("Guía de voz activada", true);
-        } else if (currentVoiceSource) {
-            try {
-                currentVoiceSource.onended = null;
-                currentVoiceSource.stop();
-            } catch (e) {}
-            currentVoiceSource = null;
+            btnVoice.innerText = "⏳ Cargando...";
+            await speakText("Guía de voz activada", true);
+            btnVoice.innerText = "🗣️ Guía ON";
+        } else {
+            btnVoice.innerText = "🤐 Guía OFF";
+            if (currentVoiceSource) {
+                try {
+                    currentVoiceSource.onended = null;
+                    currentVoiceSource.stop();
+                } catch (e) {}
+                currentVoiceSource = null;
+            }
             setIOSAudioSession('ambient');
         }
     });
@@ -438,7 +531,7 @@ function prepareWorkout(index) {
     currentRoutine = workout.routine;
     elWorkoutTitle.innerText = workout.title;
 
-    // Descarga y decodifica en memoria todas las frases de voz de esta rutina
+    // Pre-cargar los buffers de voz en segundo plano mientras estás en la pantalla de Play
     preloadWorkoutVoices(currentRoutine);
 
     screenSelector.classList.remove('active');
