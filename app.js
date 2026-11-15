@@ -42,6 +42,30 @@ function playBeep(type) {
     }
 }
 
+// --- BLOQUEO DE PANTALLA ENCENDIDA (WAKE LOCK API) ---
+let wakeLockSentinel = null;
+
+async function requestWakeLock() {
+    if ('wakeLock' in navigator) {
+        try {
+            wakeLockSentinel = await navigator.wakeLock.request('screen');
+        } catch (_) {}
+    }
+}
+
+function releaseWakeLock() {
+    if (wakeLockSentinel) {
+        wakeLockSentinel.release().catch(() => {});
+        wakeLockSentinel = null;
+    }
+}
+
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && animFrameId && !isPaused) {
+        requestWakeLock();
+    }
+});
+
 // --- PRECARGA DE IMÁGENES EN SEGUNDO PLANO ---
 const preloadedImageCache = {};
 
@@ -73,6 +97,7 @@ let currentStepDuration = 1;
 let totalWorkoutTime = 0;
 let futureStepsTime = 0;
 let prestartInterval = null;
+let finishTimeoutId = null;
 let animFrameId = null;
 let isPaused = false;
 
@@ -118,7 +143,38 @@ const countdownDisplay = document.getElementById('countdown-display');
 // =========================================================
 const perimeterPathCache = {};
 let activePerimeterData = null;
+let perimeterExtractionFailed = false;
 let lastFractionRendered = 1;
+
+function buildFallbackBoxPath(drawX, drawY, drawW, drawH, dpr) {
+    const r = Math.min(20 * dpr, drawW / 4, drawH / 4);
+    const pts = [];
+    const stepsPerSide = 20;
+    const cx = drawX + drawW / 2;
+    // Empezar arriba en el centro (12 en punto) y recorrer en sentido horario
+    for (let i = 0; i <= stepsPerSide; i++) {
+        pts.push({ x: cx + (drawW / 2 - r) * (i / stepsPerSide), y: drawY });
+    }
+    for (let i = 0; i <= stepsPerSide; i++) {
+        pts.push({ x: drawX + drawW, y: drawY + r + (drawH - 2 * r) * (i / stepsPerSide) });
+    }
+    for (let i = 0; i <= stepsPerSide; i++) {
+        pts.push({ x: drawX + drawW - r - (drawW - 2 * r) * (i / stepsPerSide), y: drawY + drawH });
+    }
+    for (let i = 0; i <= stepsPerSide; i++) {
+        pts.push({ x: drawX, y: drawY + drawH - r - (drawH - 2 * r) * (i / stepsPerSide) });
+    }
+    for (let i = 0; i <= stepsPerSide; i++) {
+        pts.push({ x: drawX + r + (cx - (drawX + r)) * (i / stepsPerSide), y: drawY });
+    }
+    const cumLengths = [0];
+    let totalLength = 0;
+    for (let i = 1; i < pts.length; i++) {
+        totalLength += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+        cumLengths.push(totalLength);
+    }
+    return { points: pts, cumLengths, totalLength, dpr };
+}
 
 function extractOrderedPerimeterPath(imgEl) {
     const src = imgEl.getAttribute('src');
@@ -137,56 +193,55 @@ function extractOrderedPerimeterPath(imgEl) {
         return perimeterPathCache[cacheKey];
     }
 
+    // Margen de 8px exacto idéntico al inset: 8px de CSS en .floating-figure-stage img
+    const pad = 8 * dpr;
+    const availW = Math.max(1, w - pad * 2);
+    const availH = Math.max(1, h - pad * 2);
+
     const imgRatio = imgEl.naturalWidth / imgEl.naturalHeight;
-    const boxRatio = w / h;
+    const boxRatio = availW / availH;
     let drawW, drawH, drawX, drawY;
     if (imgRatio > boxRatio) {
-        drawW = w;
-        drawH = w / imgRatio;
-        drawX = 0;
-        drawY = (h - drawH) / 2;
+        drawW = availW;
+        drawH = availW / imgRatio;
+        drawX = pad;
+        drawY = pad + (availH - drawH) / 2;
     } else {
-        drawH = h;
-        drawW = h * imgRatio;
-        drawX = (w - drawW) / 2;
-        drawY = 0;
+        drawH = availH;
+        drawW = availH * imgRatio;
+        drawX = pad + (availW - drawW) / 2;
+        drawY = pad;
     }
 
     const tempCanvas = document.createElement('canvas');
     tempCanvas.width = w;
     tempCanvas.height = h;
     const tCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
-
     tCtx.drawImage(imgEl, drawX, drawY, drawW, drawH);
 
-    const imgData = tCtx.getImageData(0, 0, w, h).data;
-    const isOpaque = (x, y) => {
-        if (x < 0 || y < 0 || x >= w || y >= h) return false;
-        return imgData[(y * w + x) * 4 + 3] > 80;
-    };
+    let imgData;
+    try {
+        imgData = tCtx.getImageData(0, 0, w, h).data;
+    } catch (_) {
+        // Fallback seguro si se abre mediante protocolo file:// con restricción CORS
+        const fallback = buildFallbackBoxPath(drawX, drawY, drawW, drawH, dpr);
+        perimeterPathCache[cacheKey] = fallback;
+        return fallback;
+    }
 
-    let startX = -1, startY = -1;
-    const centerX = Math.floor(w / 2);
-    outerLoop:
-    for (let y = 0; y < h; y++) {
-        for (let offset = 0; offset <= centerX; offset++) {
-            const xRight = centerX + offset;
-            if (xRight < w && isOpaque(xRight, y)) {
-                startX = xRight;
-                startY = y;
-                break outerLoop;
-            }
-            const xLeft = centerX - offset;
-            if (xLeft >= 0 && isOpaque(xLeft, y)) {
-                startX = xLeft;
-                startY = y;
-                break outerLoop;
-            }
+    const alphaMap = new Uint8Array(w * h);
+    for (let i = 0; i < w * h; i++) {
+        if (imgData[i * 4 + 3] > 70) {
+            alphaMap[i] = 1;
         }
     }
 
-    if (startX === -1) return null;
+    const isOpaque = (x, y) => {
+        if (x < 0 || y < 0 || x >= w || y >= h) return false;
+        return alphaMap[y * w + x] === 1;
+    };
 
+    // 8 vecinos en sentido horario (Moore-Neighbor)
     const dirs = [
         [0, -1],  // 0: N
         [1, -1],  // 1: NE
@@ -198,35 +253,82 @@ function extractOrderedPerimeterPath(imgEl) {
         [-1, -1]  // 7: NW
     ];
 
-    const rawPoints = [];
-    let cx = startX;
-    let cy = startY;
-    let backtrackDir = 0;
-    const maxSteps = w * h;
-    let steps = 0;
+    const centerX = Math.floor(w / 2);
+    let rawPoints = [];
 
-    do {
-        rawPoints.push({ x: cx + 0.5, y: cy + 0.5 });
-        let foundNext = false;
-        const startSearch = (backtrackDir + 1) % 8;
-        for (let i = 0; i < 8; i++) {
-            const dirIdx = (startSearch + i) % 8;
-            const nx = cx + dirs[dirIdx][0];
-            const ny = cy + dirs[dirIdx][1];
-            if (isOpaque(nx, ny)) {
-                backtrackDir = (dirIdx + 4) % 8;
-                cx = nx;
-                cy = ny;
-                foundNext = true;
-                break;
+    // Buscar la silueta principal ignorando posibles motas sueltas superiores
+    for (let attempt = 0; attempt < 5; attempt++) {
+        let startX = -1, startY = -1;
+        outerLoop:
+        for (let y = 0; y < h; y++) {
+            for (let offset = 0; offset <= centerX; offset++) {
+                const xRight = centerX + offset;
+                if (xRight < w && isOpaque(xRight, y)) {
+                    startX = xRight;
+                    startY = y;
+                    break outerLoop;
+                }
+                const xLeft = centerX - offset;
+                if (xLeft >= 0 && isOpaque(xLeft, y)) {
+                    startX = xLeft;
+                    startY = y;
+                    break outerLoop;
+                }
             }
         }
-        if (!foundNext) break;
-        steps++;
-    } while ((cx !== startX || cy !== startY) && steps < maxSteps);
 
-    if (rawPoints.length < 10) return null;
+        if (startX === -1) break;
 
+        rawPoints = [];
+        let cx = startX;
+        let cy = startY;
+        let backtrackDir = 0; // El píxel superior (Norte) está garantizado vacío
+        const maxSteps = w * h;
+        let steps = 0;
+
+        do {
+            rawPoints.push({ x: cx + 0.5, y: cy + 0.5 });
+            let foundNext = false;
+            const startSearch = (backtrackDir + 1) % 8;
+            for (let i = 0; i < 8; i++) {
+                const dirIdx = (startSearch + i) % 8;
+                const nx = cx + dirs[dirIdx][0];
+                const ny = cy + dirs[dirIdx][1];
+                if (isOpaque(nx, ny)) {
+                    // Retroceso exacto al último píxel transparente verificado
+                    backtrackDir = (dirIdx % 2 === 0) ? (dirIdx + 6) % 8 : (dirIdx + 5) % 8;
+                    cx = nx;
+                    cy = ny;
+                    foundNext = true;
+                    break;
+                }
+            }
+            if (!foundNext) break;
+            steps++;
+        } while ((cx !== startX || cy !== startY || steps < 25) && steps < maxSteps);
+
+        if (rawPoints.length >= 45) {
+            break; // Silueta principal encontrada
+        } else {
+            // Limpiar mota pequeña aislada y volver a buscar
+            rawPoints.forEach(pt => {
+                const px = Math.floor(pt.x);
+                const py = Math.floor(pt.y);
+                for (let dy = -2; dy <= 2; dy++) {
+                    for (let dx = -2; dx <= 2; dx++) {
+                        const nx = px + dx, ny = py + dy;
+                        if (nx >= 0 && ny >= 0 && nx < w && ny < h) {
+                            alphaMap[ny * w + nx] = 0;
+                        }
+                    }
+                }
+            });
+        }
+    }
+
+    if (rawPoints.length < 20) return null;
+
+    // Submuestreo y suavizado ligero que preserva la posición 1:1 del borde
     const sampleStep = Math.max(1, Math.round(1.5 * dpr));
     const sampled = [];
     for (let i = 0; i < rawPoints.length; i += sampleStep) {
@@ -245,6 +347,7 @@ function extractOrderedPerimeterPath(imgEl) {
         });
     }
 
+    // Cerrar el circuito en el punto inicial
     smoothed.push({ x: smoothed[0].x, y: smoothed[0].y });
 
     const cumLengths = [0];
@@ -278,8 +381,11 @@ function renderPngDynamicOutline(fractionRemaining) {
     const ctx = outlineCanvas.getContext('2d');
     ctx.clearRect(0, 0, w, h);
 
-    if (!activePerimeterData) {
+    if (!activePerimeterData && !perimeterExtractionFailed) {
         activePerimeterData = extractOrderedPerimeterPath(imgGif);
+        if (!activePerimeterData && imgGif.complete && imgGif.naturalWidth > 0) {
+            perimeterExtractionFailed = true;
+        }
     }
     if (!activePerimeterData) return;
 
@@ -291,6 +397,7 @@ function renderPngDynamicOutline(fractionRemaining) {
     ctx.lineJoin = 'round';
     ctx.lineWidth = lineWidth;
 
+    // 1. Guía perimetral tenue alrededor de la figura
     ctx.beginPath();
     ctx.moveTo(points[0].x, points[0].y);
     for (let i = 1; i < points.length; i++) {
@@ -299,6 +406,7 @@ function renderPngDynamicOutline(fractionRemaining) {
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.14)';
     ctx.stroke();
 
+    // 2. Línea activa continua sincronizada con el temporizador
     const clamped = Math.max(0, Math.min(1, fractionRemaining));
     const targetLength = totalLength * clamped;
 
@@ -337,6 +445,7 @@ function renderPngDynamicOutline(fractionRemaining) {
         ctx.strokeStyle = grad;
         ctx.stroke();
 
+        // Punto blanco luminoso en la punta de avance
         if (clamped < 0.995) {
             ctx.beginPath();
             ctx.arc(tipX, tipY, lineWidth * 0.7, 0, Math.PI * 2);
@@ -348,6 +457,7 @@ function renderPngDynamicOutline(fractionRemaining) {
 
 window.addEventListener('resize', () => {
     activePerimeterData = null;
+    perimeterExtractionFailed = false;
     if (floatingStage.style.display === 'flex') {
         renderPngDynamicOutline(lastFractionRendered);
     }
@@ -382,7 +492,8 @@ function initApp() {
     btnCancelPlay.addEventListener('click', endWorkout);
     
     btnStartPlay.addEventListener('click', () => {
-        initAudio(); 
+        initAudio();
+        requestWakeLock();
         btnStartPlay.style.display = 'none';
         btnCancelPlay.style.display = 'none';
         countdownDisplay.style.display = 'block';
@@ -402,7 +513,7 @@ function initApp() {
             } else {
                 clearInterval(prestartInterval);
                 readyOverlay.style.display = 'none';
-                loadStep(currentStepIndex); 
+                loadStep(currentStepIndex, 'next'); 
                 startSmoothLoop();
             }
         }, 1000);
@@ -509,6 +620,11 @@ function highlightSegments(activeIndex) {
 }
 
 function prepareWorkout(index) {
+    if (finishTimeoutId) {
+        clearTimeout(finishTimeoutId);
+        finishTimeoutId = null;
+    }
+
     const workout = workoutsData[index];
     currentRoutine = workout.routine;
     elWorkoutTitle.innerText = workout.title;
@@ -530,11 +646,12 @@ function prepareWorkout(index) {
     
     elNextExerciseName.innerText = `${currentRoutine[0].name} (${currentRoutine[0].duration}s)`;
 
-    gifContainer.querySelectorAll('.slide-out-left').forEach(el => el.remove());
-    floatingStage.classList.remove('slide-in-right');
+    gifContainer.querySelectorAll('.slide-out-left, .slide-out-right').forEach(el => el.remove());
+    floatingStage.classList.remove('slide-in-right', 'slide-in-left');
     floatingStage.style.display = "none";
     imgGif.removeAttribute('src');
     activePerimeterData = null;
+    perimeterExtractionFailed = false;
     textGif.style.display = "block";
     textGif.innerHTML = "Pulsa Play cuando estés listo";
 
@@ -550,7 +667,7 @@ function prepareWorkout(index) {
     if (prestartInterval) clearInterval(prestartInterval);
 }
 
-function loadStep(index) {
+function loadStep(index, direction = 'next') {
     if (index >= currentRoutine.length) {
         finishWorkout();
         return;
@@ -560,7 +677,7 @@ function loadStep(index) {
     currentStepDuration = step.duration;
     futureStepsTime = calculateFutureTimeAfter(index);
     
-    // Actualizar números y UI del contador de forma instantánea sin esperar al siguiente frame
+    // Actualizar números y UI del contador de forma instantánea
     lastDisplayedSecond = step.duration;
     elTimerMain.innerText = step.duration;
     elTimerTotal.innerText = formatTime(futureStepsTime + step.duration);
@@ -570,24 +687,14 @@ function loadStep(index) {
     highlightSegments(index);
     
     playBeep('start');
-    
-    if (step.isRest) {
-        elTimerMain.classList.add('rest');
-        elStepRing.setAttribute('stroke', 'url(#grad-rest)');
-        outlineCanvas.classList.add('rest-mode');
-        document.body.className = 'bg-rest';
-    } else {
-        elTimerMain.classList.remove('rest');
-        elStepRing.setAttribute('stroke', 'url(#grad-active)');
-        outlineCanvas.classList.remove('rest-mode');
-        document.body.className = 'bg-active';
-    }
 
-    gifContainer.querySelectorAll('.slide-out-left').forEach(el => el.remove());
+    // 1. Clonar la figura saliente ANTES de cambiar los estilos de color del paso nuevo
+    gifContainer.querySelectorAll('.slide-out-left, .slide-out-right').forEach(el => el.remove());
 
     if (floatingStage.style.display === "flex" && imgGif.getAttribute('src')) {
         const outgoingStage = document.createElement('div');
-        outgoingStage.className = 'floating-figure-stage slide-out-left';
+        const outClass = direction === 'prev' ? 'slide-out-right' : 'slide-out-left';
+        outgoingStage.className = `floating-figure-stage ${outClass}`;
         outgoingStage.style.display = 'flex';
         
         const outgoingImg = imgGif.cloneNode(true);
@@ -605,16 +712,42 @@ function loadStep(index) {
         outgoingStage.addEventListener('animationend', () => outgoingStage.remove());
     }
 
+    // 2. Aplicar el modo visual del nuevo paso
+    if (step.isRest) {
+        elTimerMain.classList.add('rest');
+        elStepRing.setAttribute('stroke', 'url(#grad-rest)');
+        outlineCanvas.classList.add('rest-mode');
+        document.body.className = 'bg-rest';
+    } else {
+        elTimerMain.classList.remove('rest');
+        elStepRing.setAttribute('stroke', 'url(#grad-active)');
+        outlineCanvas.classList.remove('rest-mode');
+        document.body.className = 'bg-active';
+    }
+
+    // 3. Cargar la nueva figura flotante y su contorno perimetral
     activePerimeterData = null;
+    perimeterExtractionFailed = false;
+    const inClass = direction === 'prev' ? 'slide-in-left' : 'slide-in-right';
+
     if (step.png && step.png !== "") {
-        floatingStage.classList.remove('slide-in-right');
+        floatingStage.classList.remove('slide-in-right', 'slide-in-left');
         floatingStage.style.display = "flex";
         textGif.style.display = "none";
 
         imgGif.onload = () => {
             activePerimeterData = extractOrderedPerimeterPath(imgGif);
-            renderPngDynamicOutline(1);
+            renderPngDynamicOutline(lastFractionRendered);
         };
+
+        imgGif.onerror = () => {
+            floatingStage.style.display = "none";
+            const ctx = outlineCanvas.getContext('2d');
+            ctx.clearRect(0, 0, outlineCanvas.width, outlineCanvas.height);
+            textGif.style.display = "block";
+            textGif.innerHTML = step.isRest ? "Toma un respiro" : `Ilustración pendiente<br><small style="opacity:0.65">${step.png}</small>`;
+        };
+
         imgGif.src = step.png;
         
         if (imgGif.complete && imgGif.naturalWidth > 0) {
@@ -623,21 +756,20 @@ function loadStep(index) {
         }
 
         void floatingStage.offsetWidth;
-        floatingStage.classList.add('slide-in-right');
+        floatingStage.classList.add(inClass);
     } else {
-        floatingStage.classList.remove('slide-in-right');
+        floatingStage.classList.remove('slide-in-right', 'slide-in-left');
         floatingStage.style.display = "none";
         imgGif.removeAttribute('src');
         textGif.style.display = "block";
         textGif.innerHTML = step.isRest ? "Toma un respiro" : "Imagen<br>(Sin archivo asignado)";
     }
 
-    // Fijar el tiempo exacto de inicio tras haber renderizado la transición visual
     stepEndTimestamp = performance.now() + (step.duration * 1000);
     renderContinuousFrame(step.duration * 1000);
 }
 
-// Bucle fluido a máxima tasa de refresco (reloj automático)
+// Bucle fluido a máxima tasa de refresco (reloj automático sin interrupción entre pasos)
 function startSmoothLoop() {
     stopSmoothLoop();
     function tick(now) {
@@ -645,10 +777,14 @@ function startSmoothLoop() {
             const remainingMs = stepEndTimestamp - now;
             if (remainingMs <= 0) {
                 currentStepIndex++;
-                loadStep(currentStepIndex);
-                return;
+                if (currentStepIndex >= currentRoutine.length) {
+                    finishWorkout();
+                    return;
+                }
+                loadStep(currentStepIndex, 'next');
+            } else {
+                renderContinuousFrame(remainingMs);
             }
-            renderContinuousFrame(remainingMs);
         }
         animFrameId = requestAnimationFrame(tick);
     }
@@ -704,10 +840,12 @@ function togglePause() {
     if (isPaused) {
         pausedRemainingMs = Math.max(0, stepEndTimestamp - performance.now());
         document.body.className = 'bg-default';
+        releaseWakeLock();
     } else {
         stepEndTimestamp = performance.now() + pausedRemainingMs;
         const step = currentRoutine[currentStepIndex];
         document.body.className = step.isRest ? 'bg-rest' : 'bg-active';
+        requestWakeLock();
     }
 }
 
@@ -717,6 +855,7 @@ function prevStep() {
     if (isPaused) {
         isPaused = false;
         btnPause.innerText = "Pausar";
+        requestWakeLock();
     }
 
     if (currentStepIndex > 0) {
@@ -724,7 +863,7 @@ function prevStep() {
     } else {
         currentStepIndex = 0;
     }
-    loadStep(currentStepIndex);
+    loadStep(currentStepIndex, 'prev');
     if (!animFrameId) startSmoothLoop();
 }
 
@@ -734,16 +873,26 @@ function skipStep() {
     if (isPaused) {
         isPaused = false;
         btnPause.innerText = "Pausar";
+        requestWakeLock();
     }
     
     currentStepIndex++;
-    loadStep(currentStepIndex);
-    if (!animFrameId && currentStepIndex < currentRoutine.length) startSmoothLoop();
+    if (currentStepIndex >= currentRoutine.length) {
+        finishWorkout();
+        return;
+    }
+    loadStep(currentStepIndex, 'next');
+    if (!animFrameId) startSmoothLoop();
 }
 
 function endWorkout() {
     stopSmoothLoop();
+    releaseWakeLock();
     if (prestartInterval) clearInterval(prestartInterval);
+    if (finishTimeoutId) {
+        clearTimeout(finishTimeoutId);
+        finishTimeoutId = null;
+    }
     screenWorkout.classList.remove('active');
     screenSelector.classList.add('active');
     document.body.className = 'bg-default';
@@ -751,6 +900,7 @@ function endWorkout() {
 
 function finishWorkout() {
     stopSmoothLoop();
+    releaseWakeLock();
     elExerciseName.innerText = "¡Completado!";
     elNextExerciseName.innerText = "Entrenamiento finalizado";
     elTimerMain.innerText = "0";
@@ -762,7 +912,7 @@ function finishWorkout() {
     renderPngDynamicOutline(0);
     
     playBeep('start');
-    setTimeout(() => {
+    finishTimeoutId = setTimeout(() => {
         endWorkout();
     }, 3000);
 }
