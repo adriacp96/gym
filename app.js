@@ -74,8 +74,8 @@ const btnPause = document.getElementById('btn-pause');
 const btnNext = document.getElementById('btn-next');
 const btnExit = document.getElementById('btn-exit');
 const btnSound = document.getElementById('btn-sound');
-const imgpng = document.getElementById('exercise-png');
-const textpng = document.getElementById('png-text');
+const imgGif = document.getElementById('exercise-gif');
+const textGif = document.getElementById('gif-text');
 const readyOverlay = document.getElementById('ready-overlay');
 const btnStartPlay = document.getElementById('btn-start-play');
 const btnCancelPlay = document.getElementById('btn-cancel-play');
@@ -257,9 +257,9 @@ function prepareWorkout(index) {
     
     elNextExerciseName.innerText = `${currentRoutine[0].name} (${currentRoutine[0].duration}s)`;
 
-    imgpng.style.display = "none";
-    textpng.style.display = "block";
-    textpng.innerHTML = "Pulsa Play cuando estés listo";
+    imgGif.style.display = "none";
+    textGif.style.display = "block";
+    textGif.innerHTML = "Pulsa Play cuando estés listo";
 
     readyOverlay.style.display = 'flex';
     btnStartPlay.style.display = 'block';
@@ -301,15 +301,15 @@ function loadStep(index) {
         document.body.className = 'bg-active';
     }
 
-    if (step.png && step.png !== "") {
-        imgpng.src = step.png;
-        imgpng.style.display = "block";
-        textpng.style.display = "none";
+    if (step.gif && step.gif !== "") {
+        imgGif.src = step.gif;
+        imgGif.style.display = "block";
+        textGif.style.display = "none";
     } else {
-        imgpng.style.display = "none";
-        imgpng.src = "";
-        textpng.style.display = "block";
-        textpng.innerHTML = step.isRest ? "Toma un respiro" : "png / Video<br>(Sin archivo asignado)";
+        imgGif.style.display = "none";
+        imgGif.src = "";
+        textGif.style.display = "block";
+        textGif.innerHTML = step.isRest ? "Toma un respiro" : "GIF / Video<br>(Sin archivo asignado)";
     }
 
     elStepRing.style.transition = 'none';
