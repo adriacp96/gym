@@ -69,13 +69,17 @@ function preloadAllImages() {
 
 let currentRoutine = [];
 let currentStepIndex = 0;
-let timeRemainingInStep = 0;
 let currentStepDuration = 1;
-let totalTimeRemaining = 0;
 let totalWorkoutTime = 0;
-let timerInterval = null;
+let futureStepsTime = 0;
 let prestartInterval = null;
+let animFrameId = null;
 let isPaused = false;
+
+// Variables de control de tiempo continuo (60/120fps)
+let stepEndTimestamp = 0;
+let pausedRemainingMs = 0;
+let lastDisplayedSecond = -1;
 
 // Constantes geométricas de los dos anillos (viewBox 220x220)
 const OUTER_R = 96;
@@ -130,7 +134,6 @@ function getSilhouetteOutlineMask(imgEl) {
         return silhouetteMaskCache[cacheKey];
     }
 
-    // Calcular encaje exacto (object-fit: contain)
     const imgRatio = imgEl.naturalWidth / imgEl.naturalHeight;
     const boxRatio = w / h;
     let drawW, drawH, drawX, drawY;
@@ -148,7 +151,6 @@ function getSilhouetteOutlineMask(imgEl) {
 
     const strokeThickness = Math.max(2.5, 3 * dpr);
 
-    // 1. Generar silueta expandida mediante sombras radiales en 16 direcciones
     const expandedCanvas = document.createElement('canvas');
     expandedCanvas.width = w;
     expandedCanvas.height = h;
@@ -162,11 +164,9 @@ function getSilhouetteOutlineMask(imgEl) {
         eCtx.drawImage(imgEl, drawX + ox, drawY + oy, drawW, drawH);
     }
 
-    // 2. Restar la imagen original del centro para dejar solo el borde exterior exacto
     eCtx.globalCompositeOperation = 'destination-out';
     eCtx.drawImage(imgEl, drawX, drawY, drawW, drawH);
 
-    // 3. Convertir a máscara blanca sólida
     eCtx.globalCompositeOperation = 'source-in';
     eCtx.fillStyle = '#ffffff';
     eCtx.fillRect(0, 0, w, h);
@@ -174,6 +174,9 @@ function getSilhouetteOutlineMask(imgEl) {
     silhouetteMaskCache[cacheKey] = expandedCanvas;
     return expandedCanvas;
 }
+
+// Reutilizamos un canvas auxiliar en memoria para no crear objetos en cada fotograma
+let offscreenSweepCanvas = null;
 
 function renderPngDynamicOutline(fractionRemaining) {
     lastFractionRendered = fractionRemaining;
@@ -199,21 +202,27 @@ function renderPngDynamicOutline(fractionRemaining) {
 
     const isRest = currentRoutine[currentStepIndex]?.isRest;
 
-    // 1. Contorno base tenue (mismo estilo que el anillo de fondo rgba(255,255,255,0.12))
+    // 1. Contorno base tenue
     ctx.save();
     ctx.globalAlpha = 0.18;
     ctx.drawImage(activeSilhouetteMask, 0, 0, w, h);
     ctx.restore();
 
-    // 2. Contorno de color activo sincronizado con el tiempo restante
+    // 2. Contorno continuo tipo reloj automático
     const clamped = Math.max(0, Math.min(1, fractionRemaining));
     if (clamped > 0) {
-        const tempCanvas = document.createElement('canvas');
-        tempCanvas.width = w;
-        tempCanvas.height = h;
-        const tCtx = tempCanvas.getContext('2d');
+        if (!offscreenSweepCanvas) {
+            offscreenSweepCanvas = document.createElement('canvas');
+        }
+        if (offscreenSweepCanvas.width !== w || offscreenSweepCanvas.height !== h) {
+            offscreenSweepCanvas.width = w;
+            offscreenSweepCanvas.height = h;
+        }
 
-        // Degradado idéntico al del contador circular
+        const tCtx = offscreenSweepCanvas.getContext('2d');
+        tCtx.globalCompositeOperation = 'source-over';
+        tCtx.clearRect(0, 0, w, h);
+
         const grad = tCtx.createLinearGradient(0, 0, w, h);
         if (isRest) {
             grad.addColorStop(0, '#FF9500');
@@ -223,7 +232,6 @@ function renderPngDynamicOutline(fractionRemaining) {
             grad.addColorStop(1, '#0A84FF');
         }
 
-        // Recorte angular que avanza en el sentido de las agujas del reloj desde las 12 en punto
         const cx = w / 2;
         const cy = h / 2;
         const radius = Math.hypot(w, h);
@@ -237,11 +245,10 @@ function renderPngDynamicOutline(fractionRemaining) {
         tCtx.fillStyle = grad;
         tCtx.fill();
 
-        // Aplicar el sector coloreado únicamente sobre la silueta del personaje
         tCtx.globalCompositeOperation = 'destination-in';
         tCtx.drawImage(activeSilhouetteMask, 0, 0, w, h);
 
-        ctx.drawImage(tempCanvas, 0, 0);
+        ctx.drawImage(offscreenSweepCanvas, 0, 0);
     }
 }
 
@@ -302,7 +309,7 @@ function initApp() {
                 clearInterval(prestartInterval);
                 readyOverlay.style.display = 'none';
                 loadStep(currentStepIndex); 
-                timerInterval = setInterval(updateTimer, 1000);
+                startSmoothLoop();
             }
         }, 1000);
     });
@@ -325,9 +332,9 @@ function calculateTotalTime() {
     return currentRoutine.reduce((total, step) => total + step.duration, 0);
 }
 
-function calculateRemainingFromIndex(startIndex) {
+function calculateFutureTimeAfter(stepIndex) {
     let total = 0;
-    for (let i = startIndex; i < currentRoutine.length; i++) {
+    for (let i = stepIndex + 1; i < currentRoutine.length; i++) {
         total += currentRoutine[i].duration;
     }
     return total;
@@ -418,7 +425,6 @@ function prepareWorkout(index) {
 
     currentStepIndex = 0;
     totalWorkoutTime = calculateTotalTime();
-    totalTimeRemaining = totalWorkoutTime;
     isPaused = false;
     btnPause.innerText = "Pausar";
     
@@ -426,7 +432,7 @@ function prepareWorkout(index) {
     elExerciseName.innerText = "¡Prepárate!";
     elTimerMain.innerText = currentRoutine[0].duration;
     elTimerMain.classList.remove('rest');
-    elTimerTotal.innerText = formatTime(totalTimeRemaining);
+    elTimerTotal.innerText = formatTime(totalWorkoutTime);
     
     elNextExerciseName.innerText = `${currentRoutine[0].name} (${currentRoutine[0].duration}s)`;
 
@@ -446,7 +452,7 @@ function prepareWorkout(index) {
     drawSegments(); 
     highlightSegments(0);
 
-    if (timerInterval) clearInterval(timerInterval);
+    stopSmoothLoop();
     if (prestartInterval) clearInterval(prestartInterval);
 }
 
@@ -458,8 +464,9 @@ function loadStep(index) {
 
     const step = currentRoutine[index];
     currentStepDuration = step.duration;
-    timeRemainingInStep = step.duration;
-    totalTimeRemaining = calculateRemainingFromIndex(index);
+    futureStepsTime = calculateFutureTimeAfter(index);
+    stepEndTimestamp = performance.now() + (step.duration * 1000);
+    lastDisplayedSecond = step.duration;
     
     elExerciseName.innerText = step.name;
     elStepCounter.innerText = getExerciseCounterText(index);
@@ -480,10 +487,8 @@ function loadStep(index) {
         document.body.className = 'bg-active';
     }
 
-    // Limpiar clones anteriores
     gifContainer.querySelectorAll('.slide-out-left').forEach(el => el.remove());
 
-    // Clonar la figura actual (imagen + contorno actual) para que salga hacia la izquierda
     if (floatingStage.style.display === "flex" && imgGif.getAttribute('src')) {
         const outgoingStage = document.createElement('div');
         outgoingStage.className = 'floating-figure-stage slide-out-left';
@@ -504,7 +509,6 @@ function loadStep(index) {
         outgoingStage.addEventListener('animationend', () => outgoingStage.remove());
     }
 
-    // Mostrar la nueva figura flotante deslizándose desde la derecha
     activeSilhouetteMask = null;
     if (step.png && step.png !== "") {
         floatingStage.classList.remove('slide-in-right');
@@ -531,50 +535,69 @@ function loadStep(index) {
         textGif.innerHTML = step.isRest ? "Toma un respiro" : "Imagen<br>(Sin archivo asignado)";
     }
 
-    elStepRing.style.transition = 'none';
-    elStepRing.style.strokeDashoffset = 0;
-    void elStepRing.offsetWidth;
-    elStepRing.style.transition = 'stroke-dashoffset 1s linear, stroke 0.4s ease';
-
-    updateUI();
+    renderContinuousFrame(step.duration * 1000);
 }
 
-function updateTimer() {
-    if (isPaused) return;
-
-    if (timeRemainingInStep > 0) {
-        timeRemainingInStep--;
-        totalTimeRemaining--;
-        updateUI();
-        
-        elTimerMain.style.transform = 'scale(1.05)';
-        setTimeout(() => elTimerMain.style.transform = 'scale(1)', 100);
-
-        if (timeRemainingInStep > 0 && timeRemainingInStep <= 3) {
-            playBeep('countdown');
+// Bucle fluido a máxima tasa de refresco (reloj automático)
+function startSmoothLoop() {
+    stopSmoothLoop();
+    function tick(now) {
+        if (!isPaused) {
+            const remainingMs = stepEndTimestamp - now;
+            if (remainingMs <= 0) {
+                currentStepIndex++;
+                loadStep(currentStepIndex);
+                if (currentStepIndex >= currentRoutine.length) return;
+            } else {
+                renderContinuousFrame(remainingMs);
+            }
         }
-    } else {
-        currentStepIndex++;
-        loadStep(currentStepIndex);
+        animFrameId = requestAnimationFrame(tick);
+    }
+    animFrameId = requestAnimationFrame(tick);
+}
+
+function stopSmoothLoop() {
+    if (animFrameId) {
+        cancelAnimationFrame(animFrameId);
+        animFrameId = null;
     }
 }
 
-function updateUI() {
-    elTimerMain.innerText = timeRemainingInStep;
-    elTimerTotal.innerText = formatTime(totalTimeRemaining);
-    
+function renderContinuousFrame(remainingMs) {
+    const remainingSecFloat = Math.max(0, remainingMs / 1000);
+    const displaySecond = Math.ceil(remainingSecFloat);
+    const totalRemainingSecFloat = futureStepsTime + remainingSecFloat;
+
+    // Actualizar números y pitidos solo cuando cambia el segundo entero
+    if (displaySecond !== lastDisplayedSecond) {
+        lastDisplayedSecond = displaySecond;
+        elTimerMain.innerText = displaySecond;
+        elTimerTotal.innerText = formatTime(Math.ceil(totalRemainingSecFloat));
+
+        if (displaySecond < currentStepDuration && displaySecond > 0) {
+            elTimerMain.style.transform = 'scale(1.05)';
+            setTimeout(() => elTimerMain.style.transform = 'scale(1)', 100);
+        }
+
+        if (displaySecond > 0 && displaySecond <= 3) {
+            playBeep('countdown');
+        }
+    }
+
+    // Movimiento continuo y suave (sin saltos) para ambos anillos y la silueta PNG
     if (totalWorkoutTime > 0) {
-        const elapsed = totalWorkoutTime - totalTimeRemaining;
-        const angle = (elapsed / totalWorkoutTime) * 360;
+        const elapsedTotalFloat = totalWorkoutTime - totalRemainingSecFloat;
+        const angle = (elapsedTotalFloat / totalWorkoutTime) * 360;
         elIndicatorWrapper.style.transform = `rotate(${angle}deg)`;
     }
 
     if (currentStepDuration > 0) {
-        const fractionRemaining = timeRemainingInStep / currentStepDuration;
+        const fractionRemaining = remainingSecFloat / currentStepDuration;
         const offset = INNER_C * (1 - fractionRemaining);
         elStepRing.style.strokeDashoffset = offset;
 
-        // Actualizar el contorno dinámico de la silueta en sincronía con el contador
+        // Barrido fluido continuo sobre la silueta del personaje
         renderPngDynamicOutline(fractionRemaining);
     }
 }
@@ -584,8 +607,10 @@ function togglePause() {
     btnPause.innerText = isPaused ? "Reanudar" : "Pausar";
     
     if (isPaused) {
+        pausedRemainingMs = Math.max(0, stepEndTimestamp - performance.now());
         document.body.className = 'bg-default';
     } else {
+        stepEndTimestamp = performance.now() + pausedRemainingMs;
         const step = currentRoutine[currentStepIndex];
         document.body.className = step.isRest ? 'bg-rest' : 'bg-active';
     }
@@ -605,6 +630,7 @@ function prevStep() {
         currentStepIndex = 0;
     }
     loadStep(currentStepIndex);
+    if (!animFrameId) startSmoothLoop();
 }
 
 function skipStep() {
@@ -617,10 +643,11 @@ function skipStep() {
     
     currentStepIndex++;
     loadStep(currentStepIndex);
+    if (!animFrameId && currentStepIndex < currentRoutine.length) startSmoothLoop();
 }
 
 function endWorkout() {
-    if (timerInterval) clearInterval(timerInterval);
+    stopSmoothLoop();
     if (prestartInterval) clearInterval(prestartInterval);
     screenWorkout.classList.remove('active');
     screenSelector.classList.add('active');
@@ -628,7 +655,7 @@ function endWorkout() {
 }
 
 function finishWorkout() {
-    if (timerInterval) clearInterval(timerInterval);
+    stopSmoothLoop();
     elExerciseName.innerText = "¡Completado!";
     elNextExerciseName.innerText = "Entrenamiento finalizado";
     elTimerMain.innerText = "0";
@@ -636,7 +663,7 @@ function finishWorkout() {
     document.body.className = 'bg-default';
     
     highlightSegments(currentRoutine.length);
-    elStepRing.style.strokeDashoffset = 0;
+    elStepRing.style.strokeDashoffset = INNER_C;
     renderPngDynamicOutline(0);
     
     playBeep('start');
