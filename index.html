@@ -8,7 +8,7 @@
     <meta name="apple-mobile-web-app-title" content="Entrenos">
     <meta name="theme-color" content="#07070b">
     <title>Entrenamientos Guiados</title>
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="styles.css?v=11">
 </head>
 <body class="bg-default">
 
@@ -20,10 +20,7 @@
     <div id="screen-selector" class="screen active">
         <div class="top-bar">
             <div class="header-title">Entrenamientos</div>
-            <div class="top-controls">
-                <button id="btn-voice" class="btn-sound">🗣️ Guía ON</button>
-                <button id="btn-sound" class="btn-sound">🔊 Pitidos ON</button>
-            </div>
+            <button id="btn-sound" class="btn-sound">🔊 Sonido ON</button>
         </div>
         <div class="workout-list" id="workout-list"></div>
     </div>
@@ -73,16 +70,10 @@
                                 </filter>
                             </defs>
 
-                            <!-- Pista base exterior (Total rutina r=96, grosor 10) -->
                             <circle cx="110" cy="110" r="96" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="10"></circle>
-                            
-                            <!-- Segmentos del anillo exterior -->
                             <g transform="rotate(-90 110 110)" id="timer-segments" filter="url(#glow)"></g>
-
-                            <!-- Pista base interior (Ejercicio actual r=78, grosor 10) -->
                             <circle cx="110" cy="110" r="78" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="10"></circle>
 
-                            <!-- Anillo interior del ejercicio actual -->
                             <g transform="rotate(-90 110 110)">
                                 <circle id="step-progress-ring" cx="110" cy="110" r="78" fill="none" 
                                     stroke="url(#grad-active)" stroke-width="10" stroke-linecap="round"
@@ -102,7 +93,6 @@
                 </div>
             </div>
             
-            <!-- Controles con botón Anterior, Pausar, Siguiente y Salir -->
             <div class="controls">
                 <button class="btn btn-secondary" id="btn-prev" style="color: #5AC8FA; font-weight: bold;">⏮ Ant.</button>
                 <button class="btn btn-secondary" id="btn-pause">Pausar</button>
@@ -112,7 +102,7 @@
         </div>
     </div>
 
-    <script src="data.js?v=10"></script>
-    <script src="app.js?v=10"></script>
+    <script src="data.js?v=11"></script>
+    <script src="app.js?v=11"></script>
 </body>
 </html>
