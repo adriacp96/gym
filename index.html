@@ -6,54 +6,114 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Entrenos">
-    <meta name="theme-color" content="#121212">
+    <meta name="theme-color" content="#07070a">
     <title>Entrenamientos Guiados</title>
     <link rel="stylesheet" href="styles.css">
 </head>
-<body>
+<body class="bg-default">
 
+    <!-- Fondos de luz ambiental animados (Orbes) -->
+    <div class="ambient-light light-1"></div>
+    <div class="ambient-light light-2"></div>
+
+    <!-- Pantalla 1: Selector de Ejercicios -->
     <div id="screen-selector" class="screen active">
         <div class="top-bar">
-            <div class="header-title">Entrenamientos</div>
+            <div>
+                <div class="header-subtitle">FITNESS STUDIO</div>
+                <div class="header-title">Mis Rutinas</div>
+            </div>
             <button id="btn-sound" class="btn-sound">🔊 Sonido ON</button>
         </div>
         <div class="workout-list" id="workout-list"></div>
     </div>
 
-    <div id="screen-workout" class="screen" style="position: relative;">
+    <!-- Pantalla 2: Entrenamiento Activo -->
+    <div id="screen-workout" class="screen">
         
+        <!-- Capa de preparación 3, 2, 1 -->
         <div id="ready-overlay" class="overlay-ready">
-            <button id="btn-start-play" class="btn-play">▶ Empezar</button>
-            <button id="btn-cancel-play" class="btn-cancel">Cancelar</button>
+            <div class="ready-card">
+                <div class="ready-subtitle" id="ready-workout-name">PREPARADO</div>
+                <button id="btn-start-play" class="btn-play">▶ Iniciar</button>
+                <button id="btn-cancel-play" class="btn-cancel">Volver al menú</button>
+            </div>
             <div id="countdown-display" class="countdown-text" style="display: none;">3</div>
         </div>
 
         <div class="workout-container">
-            <div class="workout-header" id="current-workout-title">Título del Entrenamiento</div>
+            <!-- Cabecera compacta superior -->
+            <div class="workout-top-bar">
+                <div class="workout-header" id="current-workout-title">Título del Entrenamiento</div>
+                <div class="step-badge" id="step-counter">1 / 15</div>
+            </div>
+
+            <!-- Contenedor adaptable (1 columna en vertical, 2 paneles en Duo/Horizontal) -->
             <div class="content-wrapper">
-                <div class="gif-placeholder" id="gif-container">
-                    <span id="gif-text">GIF / Video<br>(Sin archivo asignado)</span>
-                    <img id="exercise-gif" src="" alt="Ejercicio">
+                
+                <!-- Panel Izquierdo/Superior: Visualizador y Nombre -->
+                <div class="visual-panel">
+                    <div class="gif-placeholder" id="gif-container">
+                        <div class="gif-empty-state" id="gif-text">
+                            <span class="pulse-icon">⚡</span>
+                            <p>Demostración Visual</p>
+                        </div>
+                        <img id="exercise-gif" src="" alt="Ejercicio">
+                    </div>
+                    <div class="exercise-title-box">
+                        <span class="state-pill" id="state-pill">EJERCICIO</span>
+                        <div class="exercise-name" id="exercise-name">Preparación...</div>
+                    </div>
                 </div>
                 
-                <div class="exercise-info">
-                    <div class="exercise-name" id="exercise-name">Preparación...</div>
-                    
+                <!-- Panel Derecho/Inferior: Anillo de Actividad Moderno -->
+                <div class="timer-panel">
                     <div class="timer-circle-container">
-                        <svg viewBox="0 0 100 100" class="timer-svg">
-                            <circle cx="50" cy="50" r="45" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="6"></circle>
-                            <g transform="rotate(-90 50 50)" id="timer-segments"></g>
-                            <g transform="rotate(-90 50 50)">
-                                <circle id="timer-progress-shadow" cx="50" cy="50" r="45" fill="none" stroke="rgba(0,0,0,0.85)" stroke-width="8" stroke-dasharray="282.74" stroke-dashoffset="282.74"></circle>
+                        <svg viewBox="0 0 220 220" class="timer-svg">
+                            <defs>
+                                <!-- Gradiente Azul/Cian para Ejercicio -->
+                                <linearGradient id="grad-active" x1="0%" y1="0%" x2="100%" y2="100%">
+                                    <stop offset="0%" stop-color="#00F2FE" />
+                                    <stop offset="100%" stop-color="#0A84FF" />
+                                </linearGradient>
+                                <!-- Gradiente Coral/Naranja para Descanso -->
+                                <linearGradient id="grad-rest" x1="0%" y1="0%" x2="100%" y2="100%">
+                                    <stop offset="0%" stop-color="#FF9500" />
+                                    <stop offset="100%" stop-color="#FF2D55" />
+                                </linearGradient>
+                                <!-- Brillo Neón Suave -->
+                                <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+                                    <feGaussianBlur stdDeviation="4" result="blur" />
+                                    <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                                </filter>
+                            </defs>
+
+                            <!-- Pista base exterior (Total rutina) -->
+                            <circle cx="110" cy="110" r="96" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="7"></circle>
+                            
+                            <!-- Segmentos dinámicos de la rutina (Anillo Exterior r=96) -->
+                            <g transform="rotate(-90 110 110)" id="timer-segments"></g>
+
+                            <!-- Pista base interior (Ejercicio actual r=80) -->
+                            <circle cx="110" cy="110" r="80" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="12"></circle>
+
+                            <!-- Anillo de progreso del ejercicio actual (Bordes redondeados y gradiente) -->
+                            <g transform="rotate(-90 110 110)">
+                                <circle id="step-progress-ring" cx="110" cy="110" r="80" fill="none" 
+                                    stroke="url(#grad-active)" stroke-width="12" stroke-linecap="round"
+                                    stroke-dasharray="502.65" stroke-dashoffset="0" filter="url(#glow)"></circle>
                             </g>
                         </svg>
                         
+                        <!-- Punto orbital del progreso total -->
                         <div class="timer-indicator-wrapper" id="timer-indicator-wrapper">
                             <div class="timer-indicator-dot"></div>
                         </div>
                         
+                        <!-- Textos centrales -->
                         <div class="timer-circle-content">
                             <div class="timer-main" id="timer-main">00</div>
+                            <div class="timer-total-label">RESTANTE</div>
                             <div class="timer-total" id="timer-total">00:00</div>
                         </div>
                     </div>
@@ -61,11 +121,11 @@
 
             </div>
             
-            <!-- NUEVO: Botón "Siguiente" añadido a los controles -->
-            <div class="controls">
-                <button class="btn btn-secondary" id="btn-pause">Pausar</button>
-                <button class="btn btn-secondary" id="btn-next" style="color: var(--primary-color); font-weight: bold;">Siguiente</button>
-                <button class="btn btn-secondary exit" id="btn-exit">Salir</button>
+            <!-- Dock de Controles Flotante -->
+            <div class="controls-dock">
+                <button class="btn-dock" id="btn-pause">Pausar</button>
+                <button class="btn-dock btn-dock-primary" id="btn-next">Siguiente ⏭</button>
+                <button class="btn-dock btn-dock-danger" id="btn-exit">Salir</button>
             </div>
             
         </div>
