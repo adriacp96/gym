@@ -3,49 +3,48 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Entrenos">
-    
     <title>Entrenamientos Guiados</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 
-    <!-- Pantalla 1: Selector de Ejercicios -->
     <div id="screen-selector" class="screen active">
         <div class="top-bar">
             <div class="header-title">Entrenamientos</div>
             <button id="btn-sound" class="btn-sound">🔊 Sonido ON</button>
         </div>
-        <div class="workout-list" id="workout-list">
-            <!-- Las tarjetas se generan automáticamente aquí -->
-        </div>
+        <div class="workout-list" id="workout-list"></div>
     </div>
 
-    <!-- Pantalla 2: Entrenamiento Activo -->
-    <div id="screen-workout" class="screen">
-        <div class="workout-container">
-            
-            <div class="workout-header" id="current-workout-title">Título del Entrenamiento</div>
+    <!-- Se añade position: relative para que la capa superpuesta (overlay) encaje perfectamente -->
+    <div id="screen-workout" class="screen" style="position: relative;">
+        
+        <!-- NUEVO: Capa de preparación antes de arrancar -->
+        <div id="ready-overlay" class="overlay-ready">
+            <button id="btn-start-play" class="btn-play">▶ Empezar</button>
+            <button id="btn-cancel-play" class="btn-cancel">Cancelar</button>
+            <div id="countdown-display" class="countdown-text" style="display: none;">3</div>
+        </div>
 
+        <div class="workout-container">
+            <div class="workout-header" id="current-workout-title">Título del Entrenamiento</div>
             <div class="content-wrapper">
                 <div class="gif-placeholder" id="gif-container">
                     <span id="gif-text">GIF / Video<br>(Sin archivo asignado)</span>
                     <img id="exercise-gif" src="" alt="Ejercicio">
                 </div>
-
                 <div class="exercise-info">
                     <div class="exercise-name" id="exercise-name">Preparación...</div>
                     <div class="timer-main" id="timer-main">00</div>
                     <div class="timer-total">Faltan: <span id="timer-total">00:00</span></div>
                 </div>
             </div>
-
             <div class="controls">
                 <button class="btn btn-secondary" id="btn-pause">Pausar</button>
-                <button class="btn btn-secondary" style="background-color: #333;" id="btn-exit">Salir</button>
+                <button class="btn btn-secondary exit" id="btn-exit">Salir</button>
             </div>
         </div>
     </div>
