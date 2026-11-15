@@ -74,6 +74,7 @@ const btnPause = document.getElementById('btn-pause');
 const btnNext = document.getElementById('btn-next');
 const btnExit = document.getElementById('btn-exit');
 const btnSound = document.getElementById('btn-sound');
+const gifContainer = document.getElementById('gif-container');
 const imgGif = document.getElementById('exercise-gif');
 const textGif = document.getElementById('gif-text');
 const readyOverlay = document.getElementById('ready-overlay');
@@ -257,7 +258,11 @@ function prepareWorkout(index) {
     
     elNextExerciseName.innerText = `${currentRoutine[0].name} (${currentRoutine[0].duration}s)`;
 
+    // Limpiar posibles restos de animación previa
+    gifContainer.querySelectorAll('.slide-out-left').forEach(el => el.remove());
+    imgGif.classList.remove('slide-in-right');
     imgGif.style.display = "none";
+    imgGif.removeAttribute('src');
     textGif.style.display = "block";
     textGif.innerHTML = "Pulsa Play cuando estés listo";
 
@@ -301,14 +306,30 @@ function loadStep(index) {
         document.body.className = 'bg-active';
     }
 
-    // Aquí se lee correctamente la propiedad step.png
+    // Limpiar clones anteriores si se pulsa rápido
+    gifContainer.querySelectorAll('.slide-out-left').forEach(el => el.remove());
+
+    // Si había una imagen mostrándose, clonarla para que se deslice hacia la izquierda
+    if (imgGif.style.display === "block" && imgGif.getAttribute('src')) {
+        const outgoingImg = imgGif.cloneNode(true);
+        outgoingImg.removeAttribute('id');
+        outgoingImg.className = 'slide-out-left';
+        gifContainer.appendChild(outgoingImg);
+        outgoingImg.addEventListener('animationend', () => outgoingImg.remove());
+    }
+
+    // Mostrar la nueva imagen deslizándose desde la derecha
     if (step.png && step.png !== "") {
+        imgGif.classList.remove('slide-in-right');
         imgGif.src = step.png;
         imgGif.style.display = "block";
         textGif.style.display = "none";
+        void imgGif.offsetWidth; // Forzar reflujo para reiniciar la animación
+        imgGif.classList.add('slide-in-right');
     } else {
+        imgGif.classList.remove('slide-in-right');
         imgGif.style.display = "none";
-        imgGif.src = "";
+        imgGif.removeAttribute('src');
         textGif.style.display = "block";
         textGif.innerHTML = step.isRest ? "Toma un respiro" : "Imagen<br>(Sin archivo asignado)";
     }
