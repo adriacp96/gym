@@ -159,14 +159,15 @@ body.bg-rest .light-2 { background: radial-gradient(circle, #FF9500, #4d1900); }
     will-change: transform, opacity;
 }
 
-/* Mismo ancho uniforme y margen de 6px para alojar la línea perimetral */
+/* Mismo ancho uniforme y alineación 1:1 exacta con el canvas del contorno */
 .floating-figure-stage img {
+    position: absolute;
+    inset: 0;
     width: 100%;
     height: 100%;
-    padding: 6px;
+    padding: 0;
     object-fit: contain;
     display: block;
-    position: relative;
     z-index: 2;
     filter: drop-shadow(0 12px 24px rgba(0, 0, 0, 0.55));
 }
