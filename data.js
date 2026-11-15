@@ -4,21 +4,21 @@ const workoutsData = [
         title: "Plancha 5 Minutos",
         description: "15 intervalos • Resistencia Core",
         routine: [
-            { name: "Plancha con levantamiento alternado de piernas", duration: 60, isRest: false, gif: "gym/04_lancha_con_levantamiento_alternado_de_piernas.png" },
-            { name: "Descanso", duration: 10, isRest: true, gif: "gym/00_descanso.png" },
-            { name: "Plancha alta", duration: 60, isRest: false, gif: "gym/01_plancha_alta.png" },
-            { name: "Descanso", duration: 10, isRest: true, gif: "gym/00_descanso.png" },
-            { name: "Plancha lateral con flex. rodillas (Izquierdo)", duration: 30, isRest: false, gif: "gym/05_plancha_lateral_con_flex_rodillas.png" },
-            { name: "Descanso", duration: 10, isRest: true, gif: "gym/00_descanso.png" },
-            { name: "Plancha lateral con flex. rodillas (Derecho)", duration: 30, isRest: false, gif: "gym/05_plancha_lateral_con_flex_rodillas.png" },
-            { name: "Descanso", duration: 10, isRest: true, gif: "gym/00_descanso.png" },
-            { name: "Plancha con deslizamiento", duration: 30, isRest: false, gif: "gym/02_plancha_con_deslizamiento.png" },
-            { name: "Descanso", duration: 10, isRest: true, gif: "gym/00_descanso.png" },
-            { name: "Plancha con estiramientos (Izquierdo)", duration: 30, isRest: false, gif: "gym/03_plancha_con_estiramientos.png" },
-            { name: "Descanso", duration: 10, isRest: true, gif: "gym/00_descanso.png" },
-            { name: "Plancha con estiramientos (Derecho)", duration: 30, isRest: false, gif: "gym/03_plancha_con_estiramientos.png" },
-            { name: "Descanso", duration: 10, isRest: true, gif: "gym/00_descanso.png" },
-            { name: "Plancha alta", duration: 30, isRest: false, gif: "gym/01_plancha_alta.png" }
+            { name: "Plancha con levantamiento alternado de piernas", duration: 60, isRest: false, png: "gym/04_lancha_con_levantamiento_alternado_de_piernas.png" },
+            { name: "Descanso", duration: 10, isRest: true, png: "gym/00_descanso.png" },
+            { name: "Plancha alta", duration: 60, isRest: false, png: "gym/01_plancha_alta.png" },
+            { name: "Descanso", duration: 10, isRest: true, png: "gym/00_descanso.png" },
+            { name: "Plancha lateral con flex. rodillas (Izquierdo)", duration: 30, isRest: false, png: "gym/05_plancha_lateral_con_flex_rodillas.png" },
+            { name: "Descanso", duration: 10, isRest: true, png: "gym/00_descanso.png" },
+            { name: "Plancha lateral con flex. rodillas (Derecho)", duration: 30, isRest: false, png: "gym/05_plancha_lateral_con_flex_rodillas.png" },
+            { name: "Descanso", duration: 10, isRest: true, png: "gym/00_descanso.png" },
+            { name: "Plancha con deslizamiento", duration: 30, isRest: false, png: "gym/02_plancha_con_deslizamiento.png" },
+            { name: "Descanso", duration: 10, isRest: true, png: "gym/00_descanso.png" },
+            { name: "Plancha con estiramientos (Izquierdo)", duration: 30, isRest: false, png: "gym/03_plancha_con_estiramientos.png" },
+            { name: "Descanso", duration: 10, isRest: true, png: "gym/00_descanso.png" },
+            { name: "Plancha con estiramientos (Derecho)", duration: 30, isRest: false, png: "gym/03_plancha_con_estiramientos.png" },
+            { name: "Descanso", duration: 10, isRest: true, png: "gym/00_descanso.png" },
+            { name: "Plancha alta", duration: 30, isRest: false, png: "gym/01_plancha_alta.png" }
         ]
     }
 ];
