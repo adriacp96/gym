@@ -25,18 +25,18 @@ function playBeep(type) {
     
     if (type === 'countdown') {
         oscillator.type = 'sine';
-        oscillator.frequency.setValueAtTime(520, audioCtx.currentTime); 
-        gainNode.gain.setValueAtTime(0.8, audioCtx.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.18);
+        oscillator.frequency.setValueAtTime(440, audioCtx.currentTime); 
+        gainNode.gain.setValueAtTime(1, audioCtx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.2);
         oscillator.start(audioCtx.currentTime);
-        oscillator.stop(audioCtx.currentTime + 0.18);
+        oscillator.stop(audioCtx.currentTime + 0.2);
     } else if (type === 'start') {
-        oscillator.type = 'triangle';
+        oscillator.type = 'square';
         oscillator.frequency.setValueAtTime(880, audioCtx.currentTime); 
         gainNode.gain.setValueAtTime(1, audioCtx.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.42);
+        gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.4);
         oscillator.start(audioCtx.currentTime);
-        oscillator.stop(audioCtx.currentTime + 0.42);
+        oscillator.stop(audioCtx.currentTime + 0.4);
     }
 }
 
@@ -50,19 +50,17 @@ let timerInterval = null;
 let prestartInterval = null;
 let isPaused = false;
 
-// Constantes geométricas de los dos anillos (ambos con stroke-width=12 y mismo diseño)
+// Constantes geométricas de los dos anillos (viewBox 220x220)
 const OUTER_R = 96;
 const OUTER_C = 2 * Math.PI * OUTER_R; // 603.185
-const INNER_R = 76;
-const INNER_C = 2 * Math.PI * INNER_R; // 477.522
+const INNER_R = 78;
+const INNER_C = 2 * Math.PI * INNER_R; // 490.088
 
 const screenSelector = document.getElementById('screen-selector');
 const screenWorkout = document.getElementById('screen-workout');
 const listContainer = document.getElementById('workout-list');
 const elWorkoutTitle = document.getElementById('current-workout-title');
-const elReadyWorkoutName = document.getElementById('ready-workout-name');
 const elStepCounter = document.getElementById('step-counter');
-const elStatePill = document.getElementById('state-pill');
 const elExerciseName = document.getElementById('exercise-name');
 const elNextExerciseName = document.getElementById('next-exercise-name');
 const elTimerMain = document.getElementById('timer-main');
@@ -76,7 +74,6 @@ const btnSound = document.getElementById('btn-sound');
 const imgGif = document.getElementById('exercise-gif');
 const textGif = document.getElementById('gif-text');
 const readyOverlay = document.getElementById('ready-overlay');
-const readyCard = document.querySelector('.ready-card');
 const btnStartPlay = document.getElementById('btn-start-play');
 const btnCancelPlay = document.getElementById('btn-cancel-play');
 const countdownDisplay = document.getElementById('countdown-display');
@@ -87,11 +84,9 @@ function initApp() {
         const card = document.createElement('div');
         card.className = 'workout-card';
         card.innerHTML = `
-            <div>
-                <div class="workout-title">${workout.title}</div>
-                <div class="workout-meta">${workout.description}</div>
-            </div>
-            <button class="btn" data-index="${index}">Seleccionar Rutina</button>
+            <div class="workout-title">${workout.title}</div>
+            <div class="workout-meta">${workout.description}</div>
+            <button class="btn" data-index="${index}">Seleccionar</button>
         `;
         listContainer.appendChild(card);
     });
@@ -110,7 +105,8 @@ function initApp() {
     
     btnStartPlay.addEventListener('click', () => {
         initAudio(); 
-        readyCard.style.display = 'none';
+        btnStartPlay.style.display = 'none';
+        btnCancelPlay.style.display = 'none';
         countdownDisplay.style.display = 'block';
 
         let count = 3;
@@ -151,20 +147,20 @@ function calculateTotalTime() {
     return currentRoutine.reduce((total, step) => total + step.duration, 0);
 }
 
-// NUEVO: Calcula el número de ejercicio real ignorando los descansos
+// Cuenta únicamente los ejercicios reales (ignora los descansos)
 function getExerciseCounterText(stepIndex) {
     const totalExercises = currentRoutine.filter(step => !step.isRest).length;
-    let completedOrCurrent = 0;
+    let currentExerciseNum = 0;
     for (let i = 0; i <= stepIndex && i < currentRoutine.length; i++) {
         if (!currentRoutine[i].isRest) {
-            completedOrCurrent++;
+            currentExerciseNum++;
         }
     }
-    if (completedOrCurrent === 0) completedOrCurrent = 1;
-    return `Ejercicio ${completedOrCurrent} / ${totalExercises}`;
+    if (currentExerciseNum === 0) currentExerciseNum = 1;
+    return `Ejercicio ${currentExerciseNum} / ${totalExercises}`;
 }
 
-// NUEVO: Busca el próximo ejercicio real (saltándose descansos) para la vista previa
+// Busca el próximo ejercicio real (saltándose los descansos)
 function updateNextExercisePreview(fromIndex) {
     let nextExercise = null;
     for (let i = fromIndex + 1; i < currentRoutine.length; i++) {
@@ -176,18 +172,16 @@ function updateNextExercisePreview(fromIndex) {
     if (nextExercise) {
         elNextExerciseName.innerText = `${nextExercise.name} (${nextExercise.duration}s)`;
     } else {
-        elNextExerciseName.innerText = "¡Último ejercicio de la rutina!";
+        elNextExerciseName.innerText = "¡Último ejercicio!";
     }
 }
 
-// Dibuja el anillo exterior con el mismo estilo (gradiente, grosor 12 y bordes redondeados) que el interior
+// Dibuja el anillo exterior con el mismo diseño moderno (grosor 10, bordes redondeados y gradiente)
 function drawSegments() {
     const container = document.getElementById('timer-segments');
     container.innerHTML = '';
     let accumulated = 0;
-    
-    // Espacio necesario para que los bordes redondeados (stroke-linecap="round") no se solapen
-    const capGap = currentRoutine.length > 1 ? 14 : 0;
+    const capGap = currentRoutine.length > 1 ? 12 : 0;
     
     currentRoutine.forEach((step, idx) => {
         const length = (step.duration / totalWorkoutTime) * OUTER_C;
@@ -198,10 +192,8 @@ function drawSegments() {
         circle.setAttribute('fill', 'none');
         circle.setAttribute('class', 'segment-arc');
         circle.setAttribute('id', `seg-${idx}`);
-        
-        // Mismo gradiente, grosor y bordes redondeados que el anillo interior
         circle.setAttribute('stroke', step.isRest ? 'url(#grad-rest)' : 'url(#grad-active)');
-        circle.setAttribute('stroke-width', '12');
+        circle.setAttribute('stroke-width', '10');
         circle.setAttribute('stroke-linecap', 'round');
         
         const visibleLength = Math.max(1.5, length - capGap);
@@ -218,20 +210,16 @@ function drawSegments() {
     elStepRing.style.strokeDashoffset = 0;
 }
 
-// Ilumina el segmento actual manteniendo el grosor uniforme de 12px
 function highlightSegments(activeIndex) {
     currentRoutine.forEach((_, idx) => {
         const seg = document.getElementById(`seg-${idx}`);
         if (!seg) return;
         if (idx < activeIndex) {
-            seg.style.opacity = '0.16';
-            seg.setAttribute('stroke-width', '12');
+            seg.style.opacity = '0.2';
         } else if (idx === activeIndex) {
             seg.style.opacity = '1';
-            seg.setAttribute('stroke-width', '13.5');
         } else {
-            seg.style.opacity = '0.5';
-            seg.setAttribute('stroke-width', '12');
+            seg.style.opacity = '0.55';
         }
     });
 }
@@ -240,7 +228,6 @@ function prepareWorkout(index) {
     const workout = workoutsData[index];
     currentRoutine = workout.routine;
     elWorkoutTitle.innerText = workout.title;
-    elReadyWorkoutName.innerText = workout.title.toUpperCase();
 
     screenSelector.classList.remove('active');
     screenWorkout.classList.add('active');
@@ -253,24 +240,24 @@ function prepareWorkout(index) {
     btnPause.innerText = "Pausar";
     
     elStepCounter.innerText = getExerciseCounterText(0);
-    elStatePill.innerText = "PREPARACIÓN";
-    elStatePill.classList.remove('rest');
-    elExerciseName.innerText = currentRoutine[0].name;
+    elExerciseName.innerText = "¡Prepárate!";
     elTimerMain.innerText = currentRoutine[0].duration;
     elTimerMain.classList.remove('rest');
     elTimerTotal.innerText = formatTime(totalTimeRemaining);
     
-    // Mostrar cuál es el primer o segundo ejercicio en la vista previa
-    updateNextExercisePreview(0);
+    // Al estar en preparación, el "Siguiente" es el primer ejercicio
+    elNextExerciseName.innerText = `${currentRoutine[0].name} (${currentRoutine[0].duration}s)`;
 
     imgGif.style.display = "none";
-    textGif.style.display = "flex";
+    textGif.style.display = "block";
+    textGif.innerHTML = "Pulsa Play cuando estés listo";
 
     readyOverlay.style.display = 'flex';
-    readyCard.style.display = 'flex';
+    btnStartPlay.style.display = 'block';
+    btnCancelPlay.style.display = 'block';
     countdownDisplay.style.display = 'none';
 
-    drawSegments();
+    drawSegments(); 
     highlightSegments(0);
 
     if (timerInterval) clearInterval(timerInterval);
@@ -296,14 +283,10 @@ function loadStep(index) {
     
     if (step.isRest) {
         elTimerMain.classList.add('rest');
-        elStatePill.innerText = "DESCANSO";
-        elStatePill.classList.add('rest');
         elStepRing.setAttribute('stroke', 'url(#grad-rest)');
         document.body.className = 'bg-rest';
     } else {
         elTimerMain.classList.remove('rest');
-        elStatePill.innerText = "EJERCICIO ACTIVO";
-        elStatePill.classList.remove('rest');
         elStepRing.setAttribute('stroke', 'url(#grad-active)');
         document.body.className = 'bg-active';
     }
@@ -315,10 +298,8 @@ function loadStep(index) {
     } else {
         imgGif.style.display = "none";
         imgGif.src = "";
-        textGif.style.display = "flex";
-        textGif.innerHTML = step.isRest 
-            ? `<span class="pulse-icon">🧘‍♂️</span><p>Recupera el aliento</p>` 
-            : `<span class="pulse-icon">⚡</span><p>Mantén la postura</p>`;
+        textGif.style.display = "block";
+        textGif.innerHTML = step.isRest ? "Toma un respiro" : "GIF / Video<br>(Sin archivo asignado)";
     }
 
     elStepRing.style.transition = 'none';
@@ -337,8 +318,8 @@ function updateTimer() {
         totalTimeRemaining--;
         updateUI();
         
-        elTimerMain.style.transform = 'scale(1.04)';
-        setTimeout(() => elTimerMain.style.transform = 'scale(1)', 120);
+        elTimerMain.style.transform = 'scale(1.05)';
+        setTimeout(() => elTimerMain.style.transform = 'scale(1)', 100);
 
         if (timeRemainingInStep > 0 && timeRemainingInStep <= 3) {
             playBeep('countdown');
@@ -354,8 +335,8 @@ function updateUI() {
     elTimerTotal.innerText = formatTime(totalTimeRemaining);
     
     if (totalWorkoutTime > 0) {
-        const elapsedTotal = totalWorkoutTime - totalTimeRemaining;
-        const angle = (elapsedTotal / totalWorkoutTime) * 360;
+        const elapsed = totalWorkoutTime - totalTimeRemaining;
+        const angle = (elapsed / totalWorkoutTime) * 360;
         elIndicatorWrapper.style.transform = `rotate(${angle}deg)`;
     }
 
@@ -403,10 +384,9 @@ function endWorkout() {
 
 function finishWorkout() {
     if (timerInterval) clearInterval(timerInterval);
-    elStatePill.innerText = "FINALIZADO";
-    elExerciseName.innerText = "¡Entrenamiento Completado!";
-    elNextExerciseName.innerText = "Sesión terminada con éxito";
-    elTimerMain.innerText = "✓";
+    elExerciseName.innerText = "¡Completado!";
+    elNextExerciseName.innerText = "Entrenamiento finalizado";
+    elTimerMain.innerText = "0";
     elTimerTotal.innerText = "00:00";
     document.body.className = 'bg-default';
     
@@ -416,7 +396,7 @@ function finishWorkout() {
     playBeep('start');
     setTimeout(() => {
         endWorkout();
-    }, 3200);
+    }, 3000);
 }
 
 document.addEventListener('DOMContentLoaded', initApp);
