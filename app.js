@@ -50,11 +50,11 @@ let timerInterval = null;
 let prestartInterval = null;
 let isPaused = false;
 
-// Constantes geométricas de los anillos SVG (viewBox 220x220)
+// Constantes geométricas de los dos anillos (ambos con stroke-width=12 y mismo diseño)
 const OUTER_R = 96;
 const OUTER_C = 2 * Math.PI * OUTER_R; // 603.185
-const INNER_R = 80;
-const INNER_C = 2 * Math.PI * INNER_R; // 502.654
+const INNER_R = 76;
+const INNER_C = 2 * Math.PI * INNER_R; // 477.522
 
 const screenSelector = document.getElementById('screen-selector');
 const screenWorkout = document.getElementById('screen-workout');
@@ -64,6 +64,7 @@ const elReadyWorkoutName = document.getElementById('ready-workout-name');
 const elStepCounter = document.getElementById('step-counter');
 const elStatePill = document.getElementById('state-pill');
 const elExerciseName = document.getElementById('exercise-name');
+const elNextExerciseName = document.getElementById('next-exercise-name');
 const elTimerMain = document.getElementById('timer-main');
 const elTimerTotal = document.getElementById('timer-total');
 const elStepRing = document.getElementById('step-progress-ring');
@@ -150,11 +151,43 @@ function calculateTotalTime() {
     return currentRoutine.reduce((total, step) => total + step.duration, 0);
 }
 
-// Dibuja los segmentos de la rutina en el anillo exterior (r=96)
+// NUEVO: Calcula el número de ejercicio real ignorando los descansos
+function getExerciseCounterText(stepIndex) {
+    const totalExercises = currentRoutine.filter(step => !step.isRest).length;
+    let completedOrCurrent = 0;
+    for (let i = 0; i <= stepIndex && i < currentRoutine.length; i++) {
+        if (!currentRoutine[i].isRest) {
+            completedOrCurrent++;
+        }
+    }
+    if (completedOrCurrent === 0) completedOrCurrent = 1;
+    return `Ejercicio ${completedOrCurrent} / ${totalExercises}`;
+}
+
+// NUEVO: Busca el próximo ejercicio real (saltándose descansos) para la vista previa
+function updateNextExercisePreview(fromIndex) {
+    let nextExercise = null;
+    for (let i = fromIndex + 1; i < currentRoutine.length; i++) {
+        if (!currentRoutine[i].isRest) {
+            nextExercise = currentRoutine[i];
+            break;
+        }
+    }
+    if (nextExercise) {
+        elNextExerciseName.innerText = `${nextExercise.name} (${nextExercise.duration}s)`;
+    } else {
+        elNextExerciseName.innerText = "¡Último ejercicio de la rutina!";
+    }
+}
+
+// Dibuja el anillo exterior con el mismo estilo (gradiente, grosor 12 y bordes redondeados) que el interior
 function drawSegments() {
     const container = document.getElementById('timer-segments');
     container.innerHTML = '';
     let accumulated = 0;
+    
+    // Espacio necesario para que los bordes redondeados (stroke-linecap="round") no se solapen
+    const capGap = currentRoutine.length > 1 ? 14 : 0;
     
     currentRoutine.forEach((step, idx) => {
         const length = (step.duration / totalWorkoutTime) * OUTER_C;
@@ -165,15 +198,17 @@ function drawSegments() {
         circle.setAttribute('fill', 'none');
         circle.setAttribute('class', 'segment-arc');
         circle.setAttribute('id', `seg-${idx}`);
-        circle.setAttribute('stroke', step.isRest ? '#FF2D55' : '#00F2FE');
-        circle.setAttribute('stroke-width', '7');
         
-        // Separación limpia entre bloques
-        const gap = currentRoutine.length > 1 ? 3.5 : 0;
-        const visibleLength = Math.max(1.5, length - gap);
+        // Mismo gradiente, grosor y bordes redondeados que el anillo interior
+        circle.setAttribute('stroke', step.isRest ? 'url(#grad-rest)' : 'url(#grad-active)');
+        circle.setAttribute('stroke-width', '12');
+        circle.setAttribute('stroke-linecap', 'round');
+        
+        const visibleLength = Math.max(1.5, length - capGap);
+        const startOffset = accumulated + (capGap / 2);
         
         circle.setAttribute('stroke-dasharray', `${visibleLength} ${OUTER_C}`);
-        circle.setAttribute('stroke-dashoffset', -accumulated);
+        circle.setAttribute('stroke-dashoffset', -startOffset);
         
         container.appendChild(circle);
         accumulated += length;
@@ -183,20 +218,20 @@ function drawSegments() {
     elStepRing.style.strokeDashoffset = 0;
 }
 
-// Ilumina el segmento actual, atenúa los pasados y deja visibles los futuros
+// Ilumina el segmento actual manteniendo el grosor uniforme de 12px
 function highlightSegments(activeIndex) {
     currentRoutine.forEach((_, idx) => {
         const seg = document.getElementById(`seg-${idx}`);
         if (!seg) return;
         if (idx < activeIndex) {
-            seg.style.opacity = '0.18';
-            seg.setAttribute('stroke-width', '5');
+            seg.style.opacity = '0.16';
+            seg.setAttribute('stroke-width', '12');
         } else if (idx === activeIndex) {
             seg.style.opacity = '1';
-            seg.setAttribute('stroke-width', '9');
+            seg.setAttribute('stroke-width', '13.5');
         } else {
-            seg.style.opacity = '0.55';
-            seg.setAttribute('stroke-width', '7');
+            seg.style.opacity = '0.5';
+            seg.setAttribute('stroke-width', '12');
         }
     });
 }
@@ -217,14 +252,17 @@ function prepareWorkout(index) {
     isPaused = false;
     btnPause.innerText = "Pausar";
     
-    elStepCounter.innerText = `1 / ${currentRoutine.length}`;
+    elStepCounter.innerText = getExerciseCounterText(0);
     elStatePill.innerText = "PREPARACIÓN";
     elStatePill.classList.remove('rest');
-    elExerciseName.innerText = "Listo para empezar";
+    elExerciseName.innerText = currentRoutine[0].name;
     elTimerMain.innerText = currentRoutine[0].duration;
     elTimerMain.classList.remove('rest');
     elTimerTotal.innerText = formatTime(totalTimeRemaining);
     
+    // Mostrar cuál es el primer o segundo ejercicio en la vista previa
+    updateNextExercisePreview(0);
+
     imgGif.style.display = "none";
     textGif.style.display = "flex";
 
@@ -250,7 +288,8 @@ function loadStep(index) {
     timeRemainingInStep = step.duration;
     
     elExerciseName.innerText = step.name;
-    elStepCounter.innerText = `${index + 1} / ${currentRoutine.length}`;
+    elStepCounter.innerText = getExerciseCounterText(index);
+    updateNextExercisePreview(index);
     highlightSegments(index);
     
     playBeep('start');
@@ -282,7 +321,6 @@ function loadStep(index) {
             : `<span class="pulse-icon">⚡</span><p>Mantén la postura</p>`;
     }
 
-    // Resetear instantáneamente el anillo interior al 100% al cambiar de ejercicio
     elStepRing.style.transition = 'none';
     elStepRing.style.strokeDashoffset = 0;
     void elStepRing.offsetWidth;
@@ -315,14 +353,12 @@ function updateUI() {
     elTimerMain.innerText = timeRemainingInStep;
     elTimerTotal.innerText = formatTime(totalTimeRemaining);
     
-    // 1. Anillo exterior: Gira el punto blanco según el progreso total
     if (totalWorkoutTime > 0) {
         const elapsedTotal = totalWorkoutTime - totalTimeRemaining;
         const angle = (elapsedTotal / totalWorkoutTime) * 360;
         elIndicatorWrapper.style.transform = `rotate(${angle}deg)`;
     }
 
-    // 2. Anillo interior: Se vacía suavemente en el ejercicio actual
     if (currentStepDuration > 0) {
         const fractionRemaining = timeRemainingInStep / currentStepDuration;
         const offset = INNER_C * (1 - fractionRemaining);
@@ -369,6 +405,7 @@ function finishWorkout() {
     if (timerInterval) clearInterval(timerInterval);
     elStatePill.innerText = "FINALIZADO";
     elExerciseName.innerText = "¡Entrenamiento Completado!";
+    elNextExerciseName.innerText = "Sesión terminada con éxito";
     elTimerMain.innerText = "✓";
     elTimerTotal.innerText = "00:00";
     document.body.className = 'bg-default';
