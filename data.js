@@ -20,5 +20,41 @@ const workoutsData = [
             { name: "Descanso", duration: 10, isRest: true, png: "00_descanso.png" },
             { name: "Plancha alta", duration: 30, isRest: false, png: "01_plancha_alta.png" }
         ]
+    },
+    {
+        id: "trabajo-rapido-abdomen",
+        title: "Trabajo rápido de abdomen",
+        description: "29 intervalos • Abdomen y Core",
+        routine: [
+            { name: "Plancha alta", duration: 30, isRest: false, png: "01_plancha_alta.png" },
+            { name: "Descanso", duration: 10, isRest: true, png: "00_descanso.png" },
+            { name: "Abdominal inversa", duration: 30, isRest: false, png: "06_abdominal_inversa.png" },
+            { name: "Descanso", duration: 10, isRest: true, png: "00_descanso.png" },
+            { name: "Aleteo de piernas", duration: 30, isRest: false, png: "07_aleteo_de_piernas.png" },
+            { name: "Descanso", duration: 10, isRest: true, png: "00_descanso.png" },
+            { name: "Abdominales completos", duration: 30, isRest: false, png: "08_abdominales_completos.png" },
+            { name: "Descanso", duration: 10, isRest: true, png: "00_descanso.png" },
+            { name: "Toques de dedo (pie izquierdo)", duration: 30, isRest: false, png: "09_toques_de_dedo_un_pie.png" },
+            { name: "Descanso", duration: 10, isRest: true, png: "00_descanso.png" },
+            { name: "Toques de dedo (pie derecho)", duration: 30, isRest: false, png: "09_toques_de_dedo_un_pie.png" },
+            { name: "Descanso", duration: 10, isRest: true, png: "00_descanso.png" },
+            { name: "Abdominal inversa", duration: 30, isRest: false, png: "06_abdominal_inversa.png" },
+            { name: "Descanso", duration: 10, isRest: true, png: "00_descanso.png" },
+            { name: "Toques de dedo con ambas piernas", duration: 30, isRest: false, png: "10_toques_de_dedo_ambas_piernas.png" },
+            { name: "Descanso", duration: 10, isRest: true, png: "00_descanso.png" },
+            { name: "Abdominal con una sola pierna (pierna izquierda)", duration: 30, isRest: false, png: "11_abdominal_una_sola_pierna.png" },
+            { name: "Descanso", duration: 10, isRest: true, png: "00_descanso.png" },
+            { name: "Abdominal con una sola pierna (pierna derecha)", duration: 30, isRest: false, png: "11_abdominal_una_sola_pierna.png" },
+            { name: "Descanso", duration: 10, isRest: true, png: "00_descanso.png" },
+            { name: "Plancha con deslizamiento", duration: 50, isRest: false, png: "02_plancha_con_deslizamiento.png" },
+            { name: "Descanso", duration: 10, isRest: true, png: "00_descanso.png" },
+            { name: "Abdominal inversa", duration: 30, isRest: false, png: "06_abdominal_inversa.png" },
+            { name: "Descanso", duration: 10, isRest: true, png: "00_descanso.png" },
+            { name: "Abdominal con giro (pierna izquierda)", duration: 30, isRest: false, png: "12_abdominal_con_giro.png" },
+            { name: "Descanso", duration: 10, isRest: true, png: "00_descanso.png" },
+            { name: "Abdominal con giro (pierna derecha)", duration: 30, isRest: false, png: "12_abdominal_con_giro.png" },
+            { name: "Descanso", duration: 10, isRest: true, png: "00_descanso.png" },
+            { name: "Perro boca arriba", duration: 20, isRest: false, png: "13_perro_boca_arriba.png" }
+        ]
     }
 ];
