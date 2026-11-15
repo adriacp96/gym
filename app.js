@@ -1,279 +1,24 @@
-// --- MOTOR DE AUDIO GARANTIZADO PARA iOS (WEB AUDIO BUFFER + MULTI-ENDPOINT BASE64/CORS) ---
+// --- SISTEMA DE AUDIO (PITIDOS) ---
 let isSoundEnabled = true;
-let isVoiceEnabled = true;
 let audioCtx = null;
-let keepAliveOsc = null;
-let currentVoiceSource = null;
 
-// Almacén en memoria RAM de los audios ya decodificados para reproducción instantánea
-const voiceBufferCache = new Map();
-const pendingDownloads = new Map();
-
-const motivationalPhrases = [
-    "¡Vamos, tú puedes!",
-    "¡Sigue así, mantén la postura!",
-    "¡Lo estás haciendo genial!",
-    "¡No bajes el ritmo!",
-    "¡Aguanta fuerte, aprieta el abdomen!"
-];
-
-// Configura el mezclador de iOS:
-// 'ambient' -> mezcla con Spotify/Apple Music al 100%
-// 'transient' -> atenúa un poco la música mientras habla sin pausarla
-function setIOSAudioSession(mode) {
-    if ('audioSession' in navigator) {
-        try {
-            navigator.audioSession.type = mode;
-        } catch (e) {}
-    }
-}
-
-// IMPORTANTE: En iOS esta función DEBE ejecutarse de forma síncrona dentro de un click/touchstart
 function initAudio() {
-    setIOSAudioSession('ambient');
-
-    if (!audioCtx) {
-        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-        audioCtx = new AudioContextClass();
-    }
-    if (audioCtx.state === 'suspended') {
-        audioCtx.resume();
-    }
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
     
-    // Desbloqueo físico inmediato con un buffer vacío en el evento de toque del usuario
-    try {
-        const unlockBuffer = audioCtx.createBuffer(1, 1, 22050);
-        const unlockSource = audioCtx.createBufferSource();
-        unlockSource.buffer = unlockBuffer;
-        unlockSource.connect(audioCtx.destination);
-        unlockSource.start(0);
-    } catch (e) {}
-
-    // Oscilador subsónico continuo para que iOS jamás duerma el canal WebAudio
-    if (!keepAliveOsc && audioCtx) {
-        try {
-            keepAliveOsc = audioCtx.createOscillator();
-            const silentGain = audioCtx.createGain();
-            keepAliveOsc.frequency.value = 1;
-            silentGain.gain.value = 0.00001;
-            keepAliveOsc.connect(silentGain);
-            silentGain.connect(audioCtx.destination);
-            keepAliveOsc.start();
-        } catch (e) {}
-    }
-}
-
-// Convierte un string Base64 en un ArrayBuffer puro para Safari
-function base64ToArrayBuffer(base64) {
-    const cleanBase64 = base64.replace(/^data:audio\/\w+;base64,/, '');
-    const binaryString = window.atob(cleanBase64);
-    const len = binaryString.length;
-    const bytes = new Uint8Array(len);
-    for (let i = 0; i < len; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-    }
-    return bytes.buffer;
-}
-
-// Decodifica un ArrayBuffer a AudioBuffer compatible con todas las versiones de iOS Safari
-function decodeBufferForIOS(arrayBuffer) {
-    return new Promise((resolve, reject) => {
-        if (!audioCtx) initAudio();
-        // Clonamos el buffer porque Safari destruye el original al decodificar
-        const bufferCopy = arrayBuffer.slice(0);
-        audioCtx.decodeAudioData(
-            bufferCopy,
-            (decoded) => resolve(decoded),
-            (err) => reject(err)
-        );
-    });
-}
-
-// Convierte abreviaturas para que la voz las pronuncie completas
-function formatSpeechName(name) {
-    return name
-        .replace(/flex\.\s*rodillas/gi, 'flexiones de rodillas')
-        .replace(/flex\./gi, 'flexiones')
-        .replace(/\(Izquierdo\)/gi, 'lado izquierdo')
-        .replace(/\(Derecho\)/gi, 'lado derecho');
-}
-
-// Descarga el audio probando 4 proveedores CORS/Base64 independientes hasta obtener el AudioBuffer
-async function getVoiceBuffer(text) {
-    if (voiceBufferCache.has(text)) {
-        return voiceBufferCache.get(text);
-    }
-    if (pendingDownloads.has(text)) {
-        return pendingDownloads.get(text);
-    }
-
-    const downloadTask = (async () => {
-        const encoded = encodeURIComponent(text);
-
-        // Proveedor 1: TikTok / Weilbyte TTS API (Devuelve JSON con Base64 -> inmune a bloqueos de audio en Safari)
-        try {
-            const res1 = await fetch('https://tiktok-tts.weilnet.workers.dev/api/generation', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ text: text, voice: 'es_002' })
-            });
-            if (res1.ok) {
-                const json1 = await res1.json();
-                if (json1 && json1.data) {
-                    const ab = base64ToArrayBuffer(json1.data);
-                    const decoded = await decodeBufferForIOS(ab);
-                    voiceBufferCache.set(text, decoded);
-                    return decoded;
-                }
-            }
-        } catch (e) {}
-
-        // Proveedor 2: Microsoft Edge Neural TTS API (Voz Álvaro/Elvira con CORS * habilitado)
-        try {
-            const res2 = await fetch(`https://tts.travisvn.com/?text=${encoded}&voice=es-ES-AlvaroNeural`);
-            if (res2.ok) {
-                const ab = await res2.arrayBuffer();
-                if (ab.byteLength > 500) {
-                    const decoded = await decodeBufferForIOS(ab);
-                    voiceBufferCache.set(text, decoded);
-                    return decoded;
-                }
-            }
-        } catch (e) {}
-
-        // Proveedor 3: Google Translate TTS vía CodeTabs CORS Proxy
-        try {
-            const googleUrl = `https://translate.googleapis.com/translate_tts?ie=UTF-8&tl=es&client=tw-ob&q=${encoded}`;
-            const res3 = await fetch(`https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(googleUrl)}`);
-            if (res3.ok) {
-                const ab = await res3.arrayBuffer();
-                if (ab.byteLength > 500) {
-                    const decoded = await decodeBufferForIOS(ab);
-                    voiceBufferCache.set(text, decoded);
-                    return decoded;
-                }
-            }
-        } catch (e) {}
-
-        // Proveedor 4: StreamElements API
-        try {
-            const res4 = await fetch(`https://api.streamelements.com/kappa/v2/speech?voice=Conchita&text=${encoded}`);
-            if (res4.ok) {
-                const ab = await res4.arrayBuffer();
-                if (ab.byteLength > 500) {
-                    const decoded = await decodeBufferForIOS(ab);
-                    voiceBufferCache.set(text, decoded);
-                    return decoded;
-                }
-            }
-        } catch (e) {}
-
-        return null;
-    })();
-
-    pendingDownloads.set(text, downloadTask);
-    const result = await downloadTask;
-    pendingDownloads.delete(text);
-    return result;
-}
-
-// Pre-descarga todos los audios en memoria RAM para que no haya retardo durante el ejercicio
-async function preloadWorkoutVoices(routine) {
-    if (!routine) return;
-    const phrases = new Set([
-        "¡Vamos!",
-        "Descanso. Recupera el aliento.",
-        "¡Últimos diez segundos, aguanta!",
-        "Entrenamiento en pausa",
-        "Reanudamos",
-        "¡Entrenamiento completado! Buen trabajo.",
-        "Guía de voz activada"
-    ]);
-
-    motivationalPhrases.forEach(p => {
-        phrases.add(`¡Mitad del tiempo! ${p}`);
-    });
-
-    routine.forEach(step => {
-        if (!step.isRest) {
-            const cleanName = formatSpeechName(step.name);
-            phrases.add(`Prepárate para ${cleanName}`);
-            phrases.add(`¡Empezamos! ${cleanName}`);
-        }
-    });
-
-    const list = Array.from(phrases);
-    // Descargamos primero las frases iniciales críticas
-    if (routine[0]) {
-        const firstClean = formatSpeechName(routine[0].name);
-        await getVoiceBuffer(`Prepárate para ${firstClean}`);
-        await getVoiceBuffer("¡Vamos!");
-    }
-    // El resto se descarga en segundo plano
-    list.forEach(p => getVoiceBuffer(p));
-}
-
-// Reproduce el buffer de voz por el mismo canal exacto que los pitidos
-async function speakText(text, forceInterrupt = false) {
-    if (!isVoiceEnabled) return;
-
-    initAudio();
-
-    if (!forceInterrupt && currentVoiceSource) {
-        return;
-    }
-
-    if (currentVoiceSource) {
-        try {
-            currentVoiceSource.onended = null;
-            currentVoiceSource.stop();
-        } catch (e) {}
-        currentVoiceSource = null;
-    }
-
-    const buffer = await getVoiceBuffer(text);
-    if (!buffer || !isVoiceEnabled) return;
-
-    try {
-        if (audioCtx.state === 'suspended') {
-            await audioCtx.resume();
-        }
-
-        // Baja ligeramente el volumen de Spotify / Apple Music sin pausar la canción
-        setIOSAudioSession('transient');
-
-        const source = audioCtx.createBufferSource();
-        const gainNode = audioCtx.createGain();
-
-        source.buffer = buffer;
-        gainNode.gain.value = 1.8; // Volumen alto y claro sobre la música
-
-        source.connect(gainNode);
-        gainNode.connect(audioCtx.destination);
-
-        currentVoiceSource = source;
-
-        source.onended = () => {
-            if (currentVoiceSource === source) {
-                currentVoiceSource = null;
-                // Devuelve tu música al 100% de volumen en cuanto termina la frase
-                setIOSAudioSession('ambient');
-            }
-        };
-
-        source.start(0);
-    } catch (e) {
-        setIOSAudioSession('ambient');
-    }
+    // Desbloqueo silencioso para iOS
+    const unlockOscillator = audioCtx.createOscillator();
+    const unlockGain = audioCtx.createGain();
+    unlockOscillator.connect(unlockGain);
+    unlockGain.connect(audioCtx.destination);
+    unlockGain.gain.value = 0; 
+    unlockOscillator.start(audioCtx.currentTime);
+    unlockOscillator.stop(audioCtx.currentTime + 0.01);
 }
 
 function playBeep(type) {
     if (!isSoundEnabled || !audioCtx) return;
     if (audioCtx.state === 'suspended') audioCtx.resume();
-
-    if (!currentVoiceSource) {
-        setIOSAudioSession('ambient');
-    }
 
     const oscillator = audioCtx.createOscillator();
     const gainNode = audioCtx.createGain();
@@ -283,17 +28,17 @@ function playBeep(type) {
     if (type === 'countdown') {
         oscillator.type = 'sine';
         oscillator.frequency.setValueAtTime(440, audioCtx.currentTime); 
-        gainNode.gain.setValueAtTime(0.65, audioCtx.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.18);
+        gainNode.gain.setValueAtTime(1, audioCtx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.2);
         oscillator.start(audioCtx.currentTime);
-        oscillator.stop(audioCtx.currentTime + 0.18);
+        oscillator.stop(audioCtx.currentTime + 0.2);
     } else if (type === 'start') {
-        oscillator.type = 'triangle';
+        oscillator.type = 'square';
         oscillator.frequency.setValueAtTime(880, audioCtx.currentTime); 
-        gainNode.gain.setValueAtTime(0.85, audioCtx.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.38);
+        gainNode.gain.setValueAtTime(1, audioCtx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.4);
         oscillator.start(audioCtx.currentTime);
-        oscillator.stop(audioCtx.currentTime + 0.38);
+        oscillator.stop(audioCtx.currentTime + 0.4);
     }
 }
 
@@ -329,7 +74,6 @@ const btnPause = document.getElementById('btn-pause');
 const btnNext = document.getElementById('btn-next');
 const btnExit = document.getElementById('btn-exit');
 const btnSound = document.getElementById('btn-sound');
-const btnVoice = document.getElementById('btn-voice');
 const imgGif = document.getElementById('exercise-gif');
 const textGif = document.getElementById('gif-text');
 const readyOverlay = document.getElementById('ready-overlay');
@@ -339,13 +83,6 @@ const countdownDisplay = document.getElementById('countdown-display');
 
 function initApp() {
     document.body.className = 'bg-default';
-    setIOSAudioSession('ambient');
-
-    // Desbloquea el AudioContext en el primer toque en cualquier parte de la pantalla del iPhone
-    document.addEventListener('touchstart', () => {
-        initAudio();
-    }, { once: true, passive: true });
-
     workoutsData.forEach((workout, index) => {
         const card = document.createElement('div');
         card.className = 'workout-card';
@@ -359,7 +96,7 @@ function initApp() {
 
     document.querySelectorAll('.workout-card .btn').forEach(button => {
         button.addEventListener('click', (e) => {
-            initAudio();
+            initAudio(); 
             prepareWorkout(e.target.getAttribute('data-index'));
         });
     });
@@ -371,7 +108,7 @@ function initApp() {
     btnCancelPlay.addEventListener('click', endWorkout);
     
     btnStartPlay.addEventListener('click', () => {
-        initAudio();
+        initAudio(); 
         btnStartPlay.style.display = 'none';
         btnCancelPlay.style.display = 'none';
         countdownDisplay.style.display = 'block';
@@ -381,9 +118,7 @@ function initApp() {
         countdownDisplay.style.animation = 'none';
         void countdownDisplay.offsetWidth; 
         countdownDisplay.style.animation = 'popCount 1s infinite';
-        
-        playBeep('countdown');
-        speakText(`Prepárate para ${formatSpeechName(currentRoutine[0].name)}`, true);
+        playBeep('countdown'); 
 
         prestartInterval = setInterval(() => {
             count--;
@@ -393,41 +128,17 @@ function initApp() {
             } else {
                 clearInterval(prestartInterval);
                 readyOverlay.style.display = 'none';
-                loadStep(currentStepIndex, true); 
+                loadStep(currentStepIndex); 
                 timerInterval = setInterval(updateTimer, 1000);
             }
         }, 1000);
     });
 
-    // Botón de Pitidos ON/OFF
     btnSound.addEventListener('click', () => {
-        initAudio();
         isSoundEnabled = !isSoundEnabled;
-        btnSound.innerText = isSoundEnabled ? "🔊 Pitidos ON" : "🔇 Pitidos OFF";
+        btnSound.innerText = isSoundEnabled ? "🔊 Sonido ON" : "🔇 Sonido OFF";
         btnSound.classList.toggle('off', !isSoundEnabled);
-        if (isSoundEnabled) playBeep('countdown');
-    });
-
-    // Botón de Voz Guiada ON/OFF (Con prueba sonora inmediata al tocarlo)
-    btnVoice.addEventListener('click', async () => {
-        initAudio();
-        isVoiceEnabled = !isVoiceEnabled;
-        btnVoice.classList.toggle('off', !isVoiceEnabled);
-        if (isVoiceEnabled) {
-            btnVoice.innerText = "⏳ Cargando...";
-            await speakText("Guía de voz activada", true);
-            btnVoice.innerText = "🗣️ Guía ON";
-        } else {
-            btnVoice.innerText = "🤐 Guía OFF";
-            if (currentVoiceSource) {
-                try {
-                    currentVoiceSource.onended = null;
-                    currentVoiceSource.stop();
-                } catch (e) {}
-                currentVoiceSource = null;
-            }
-            setIOSAudioSession('ambient');
-        }
+        if (isSoundEnabled) initAudio();
     });
 }
 
@@ -461,17 +172,14 @@ function getExerciseCounterText(stepIndex) {
     return `Ejercicio ${currentExerciseNum} / ${totalExercises}`;
 }
 
-function getNextRealExercise(fromIndex) {
+function updateNextExercisePreview(fromIndex) {
+    let nextExercise = null;
     for (let i = fromIndex + 1; i < currentRoutine.length; i++) {
         if (!currentRoutine[i].isRest) {
-            return currentRoutine[i];
+            nextExercise = currentRoutine[i];
+            break;
         }
     }
-    return null;
-}
-
-function updateNextExercisePreview(fromIndex) {
-    const nextExercise = getNextRealExercise(fromIndex);
     if (nextExercise) {
         elNextExerciseName.innerText = `${nextExercise.name} (${nextExercise.duration}s)`;
     } else {
@@ -531,9 +239,6 @@ function prepareWorkout(index) {
     currentRoutine = workout.routine;
     elWorkoutTitle.innerText = workout.title;
 
-    // Pre-cargar los buffers de voz en segundo plano mientras estás en la pantalla de Play
-    preloadWorkoutVoices(currentRoutine);
-
     screenSelector.classList.remove('active');
     screenWorkout.classList.add('active');
     document.body.className = 'bg-default'; 
@@ -568,7 +273,7 @@ function prepareWorkout(index) {
     if (prestartInterval) clearInterval(prestartInterval);
 }
 
-function loadStep(index, isFirstAfterCountdown = false) {
+function loadStep(index) {
     if (index >= currentRoutine.length) {
         finishWorkout();
         return;
@@ -585,14 +290,6 @@ function loadStep(index, isFirstAfterCountdown = false) {
     highlightSegments(index);
     
     playBeep('start');
-    
-    if (step.isRest) {
-        speakText("Descanso. Recupera el aliento.", true);
-    } else if (isFirstAfterCountdown) {
-        speakText("¡Vamos!", false);
-    } else {
-        speakText(`¡Empezamos! ${formatSpeechName(step.name)}`, true);
-    }
     
     if (step.isRest) {
         elTimerMain.classList.add('rest');
@@ -634,25 +331,6 @@ function updateTimer() {
         elTimerMain.style.transform = 'scale(1.05)';
         setTimeout(() => elTimerMain.style.transform = 'scale(1)', 100);
 
-        const step = currentRoutine[currentStepIndex];
-        const halfTime = Math.floor(currentStepDuration / 2);
-
-        if (!step.isRest) {
-            if (currentStepDuration >= 20 && timeRemainingInStep === halfTime) {
-                const randomPhrase = motivationalPhrases[Math.floor(Math.random() * motivationalPhrases.length)];
-                speakText(`¡Mitad del tiempo! ${randomPhrase}`, false);
-            } else if (currentStepDuration >= 40 && timeRemainingInStep === 10) {
-                speakText("¡Últimos diez segundos, aguanta!", false);
-            }
-        } else {
-            if (timeRemainingInStep === 5) {
-                const nextEx = getNextRealExercise(currentStepIndex);
-                if (nextEx) {
-                    speakText(`Prepárate para ${formatSpeechName(nextEx.name)}`, false);
-                }
-            }
-        }
-
         if (timeRemainingInStep > 0 && timeRemainingInStep <= 3) {
             playBeep('countdown');
         }
@@ -685,11 +363,9 @@ function togglePause() {
     
     if (isPaused) {
         document.body.className = 'bg-default';
-        speakText("Entrenamiento en pausa", true);
     } else {
         const step = currentRoutine[currentStepIndex];
         document.body.className = step.isRest ? 'bg-rest' : 'bg-active';
-        speakText("Reanudamos", true);
     }
 }
 
@@ -724,14 +400,6 @@ function skipStep() {
 function endWorkout() {
     if (timerInterval) clearInterval(timerInterval);
     if (prestartInterval) clearInterval(prestartInterval);
-    if (currentVoiceSource) {
-        try {
-            currentVoiceSource.onended = null;
-            currentVoiceSource.stop();
-        } catch (e) {}
-        currentVoiceSource = null;
-    }
-    setIOSAudioSession('ambient');
     screenWorkout.classList.remove('active');
     screenSelector.classList.add('active');
     document.body.className = 'bg-default';
@@ -749,10 +417,9 @@ function finishWorkout() {
     elStepRing.style.strokeDashoffset = 0;
     
     playBeep('start');
-    speakText("¡Entrenamiento completado! Buen trabajo.", true);
     setTimeout(() => {
         endWorkout();
-    }, 3500);
+    }, 3000);
 }
 
 document.addEventListener('DOMContentLoaded', initApp);
