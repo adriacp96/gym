@@ -10,13 +10,12 @@ function initAudio() {
         audioCtx.resume();
     }
     
-    // HACK PARA iOS: Reproducir un pitido de volumen 0 en el evento del clic.
-    // Esto obliga a Safari a desbloquear el canal de audio permanentemente.
+    // HACK PARA iOS
     const unlockOscillator = audioCtx.createOscillator();
     const unlockGain = audioCtx.createGain();
     unlockOscillator.connect(unlockGain);
     unlockGain.connect(audioCtx.destination);
-    unlockGain.gain.value = 0; // Volumen silenciado
+    unlockGain.gain.value = 0; 
     unlockOscillator.start(audioCtx.currentTime);
     unlockOscillator.stop(audioCtx.currentTime + 0.01);
 }
@@ -35,17 +34,15 @@ function playBeep(type) {
     gainNode.connect(audioCtx.destination);
     
     if (type === 'countdown') {
-        // 3 pitidos cortos (3, 2, 1)
         oscillator.type = 'sine';
-        oscillator.frequency.setValueAtTime(440, audioCtx.currentTime); // Tono medio
+        oscillator.frequency.setValueAtTime(440, audioCtx.currentTime); 
         gainNode.gain.setValueAtTime(1, audioCtx.currentTime);
         gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.2);
         oscillator.start(audioCtx.currentTime);
         oscillator.stop(audioCtx.currentTime + 0.2);
     } else if (type === 'start') {
-        // 1 pitido largo para el cambio
         oscillator.type = 'square';
-        oscillator.frequency.setValueAtTime(880, audioCtx.currentTime); // Tono agudo
+        oscillator.frequency.setValueAtTime(880, audioCtx.currentTime); 
         gainNode.gain.setValueAtTime(1, audioCtx.currentTime);
         gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.4);
         oscillator.start(audioCtx.currentTime);
@@ -75,6 +72,12 @@ const imgGif = document.getElementById('exercise-gif');
 const textGif = document.getElementById('gif-text');
 
 function initApp() {
+    // Establecer fondo inicial
+    document.body.className = 'bg-default';
+    
+    // Le damos clase especial al botón de salir para el nuevo diseño
+    btnExit.classList.add('exit');
+
     workoutsData.forEach((workout, index) => {
         const card = document.createElement('div');
         card.className = 'workout-card';
@@ -88,7 +91,7 @@ function initApp() {
 
     document.querySelectorAll('.workout-card .btn').forEach(button => {
         button.addEventListener('click', (e) => {
-            initAudio(); // Fuerza el desbloqueo del audio en iOS
+            initAudio(); 
             startWorkout(e.target.getAttribute('data-index'));
         });
     });
@@ -144,10 +147,13 @@ function loadStep(index) {
     
     playBeep('start');
     
+    // CAMBIO DE FONDO ANIMADO SEGÚN EL ESTADO
     if (step.isRest) {
         elTimerMain.classList.add('rest');
+        document.body.className = 'bg-rest'; // Fondo rojo
     } else {
         elTimerMain.classList.remove('rest');
+        document.body.className = 'bg-active'; // Fondo azul
     }
 
     if (step.gif && step.gif !== "") {
@@ -172,6 +178,10 @@ function updateTimer() {
         totalTimeRemaining--;
         updateUI();
         
+        // Pequeño efecto visual en el reloj cada segundo (latido)
+        elTimerMain.style.transform = 'scale(1.05)';
+        setTimeout(() => elTimerMain.style.transform = 'scale(1)', 100);
+
         if (timeRemainingInStep > 0 && timeRemainingInStep <= 3) {
             playBeep('countdown');
         }
@@ -189,12 +199,22 @@ function updateUI() {
 function togglePause() {
     isPaused = !isPaused;
     btnPause.innerText = isPaused ? "Reanudar" : "Pausar";
+    
+    // Si pausamos, el fondo se pone oscuro para indicar pausa
+    if (isPaused) {
+        document.body.className = 'bg-default';
+    } else {
+        // Al reanudar, vuelve al color que le toque (ejercicio o descanso)
+        const step = currentRoutine[currentStepIndex];
+        document.body.className = step.isRest ? 'bg-rest' : 'bg-active';
+    }
 }
 
 function endWorkout() {
     if (timerInterval) clearInterval(timerInterval);
     screenWorkout.classList.remove('active');
     screenSelector.classList.add('active');
+    document.body.className = 'bg-default'; // Restaurar fondo de menú
 }
 
 function finishWorkout() {
@@ -202,6 +222,7 @@ function finishWorkout() {
     elExerciseName.innerText = "¡Completado!";
     elTimerMain.innerText = "0";
     elTimerTotal.innerText = "00:00";
+    document.body.className = 'bg-default';
     playBeep('start');
     setTimeout(() => {
         endWorkout();
