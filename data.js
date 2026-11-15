@@ -2,7 +2,7 @@ const workoutsData = [
     {
         id: "plancha-5m",
         title: "Plancha 5 Minutos",
-        description: "15 intervalos • Resistencia Core",
+        description: "8 intervalos • Resistencia Core",
         routine: [
             { name: "Plancha con levantamiento alternado de piernas", duration: 60, isRest: false, png: "04_plancha_con_levantamiento_alternado_de_piernas.png" },
             { name: "Descanso", duration: 10, isRest: true, png: "00_descanso.png" },
@@ -24,7 +24,7 @@ const workoutsData = [
     {
         id: "trabajo-rapido-abdomen",
         title: "Trabajo rápido de abdomen",
-        description: "29 intervalos • Abdomen y Core",
+        description: "15 intervalos • Abdomen y Core",
         routine: [
             { name: "Plancha alta", duration: 30, isRest: false, png: "01_plancha_alta.png" },
             { name: "Descanso", duration: 10, isRest: true, png: "00_descanso.png" },
