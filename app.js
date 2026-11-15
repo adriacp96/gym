@@ -54,9 +54,9 @@ let isPaused = false;
 
 // Constantes geométricas de los dos anillos (viewBox 220x220)
 const OUTER_R = 96;
-const OUTER_C = 2 * Math.PI * OUTER_R; // 603.185
+const OUTER_C = 2 * Math.PI * OUTER_R; 
 const INNER_R = 78;
-const INNER_C = 2 * Math.PI * INNER_R; // 490.088
+const INNER_C = 2 * Math.PI * INNER_R; 
 
 const screenSelector = document.getElementById('screen-selector');
 const screenWorkout = document.getElementById('screen-workout');
@@ -301,15 +301,16 @@ function loadStep(index) {
         document.body.className = 'bg-active';
     }
 
-    if (step.gif && step.gif !== "") {
-        imgGif.src = step.gif;
+    // Aquí se lee correctamente la propiedad step.png
+    if (step.png && step.png !== "") {
+        imgGif.src = step.png;
         imgGif.style.display = "block";
         textGif.style.display = "none";
     } else {
         imgGif.style.display = "none";
         imgGif.src = "";
         textGif.style.display = "block";
-        textGif.innerHTML = step.isRest ? "Toma un respiro" : "GIF / Video<br>(Sin archivo asignado)";
+        textGif.innerHTML = step.isRest ? "Toma un respiro" : "Imagen<br>(Sin archivo asignado)";
     }
 
     elStepRing.style.transition = 'none';
