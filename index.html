@@ -6,11 +6,15 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Entrenos">
-    <meta name="theme-color" content="#121212">
+    <meta name="theme-color" content="#07070b">
     <title>Entrenamientos Guiados</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body class="bg-default">
+
+    <!-- Fondos de luz ambiental animados (Orbes) -->
+    <div class="ambient-light light-1"></div>
+    <div class="ambient-light light-2"></div>
 
     <!-- Pantalla 1: Selector de Ejercicios -->
     <div id="screen-selector" class="screen active">
@@ -24,7 +28,7 @@
     <!-- Pantalla 2: Entrenamiento Activo -->
     <div id="screen-workout" class="screen" style="position: relative;">
         
-        <!-- Overlay original limpio y centrado -->
+        <!-- Overlay limpio y centrado -->
         <div id="ready-overlay" class="overlay-ready">
             <button id="btn-start-play" class="btn-play">▶ Empezar</button>
             <button id="btn-cancel-play" class="btn-cancel">Cancelar</button>
@@ -58,7 +62,7 @@
                                 </linearGradient>
                                 <linearGradient id="grad-rest" x1="0%" y1="0%" x2="100%" y2="100%">
                                     <stop offset="0%" stop-color="#FF9500" />
-                                    <stop offset="100%" stop-color="#FF453A" />
+                                    <stop offset="100%" stop-color="#FF2D55" />
                                 </linearGradient>
                                 <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
                                     <feGaussianBlur stdDeviation="3" result="blur" />
@@ -69,7 +73,7 @@
                             <!-- Pista base exterior (Total rutina r=96, grosor 10) -->
                             <circle cx="110" cy="110" r="96" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="10"></circle>
                             
-                            <!-- Segmentos del anillo exterior (mismo diseño redondeado y gradiente) -->
+                            <!-- Segmentos del anillo exterior -->
                             <g transform="rotate(-90 110 110)" id="timer-segments" filter="url(#glow)"></g>
 
                             <!-- Pista base interior (Ejercicio actual r=78, grosor 10) -->
@@ -95,9 +99,11 @@
                 </div>
             </div>
             
+            <!-- Controles con botón Anterior, Pausar, Siguiente y Salir -->
             <div class="controls">
+                <button class="btn btn-secondary" id="btn-prev" style="color: #5AC8FA; font-weight: bold;">⏮ Ant.</button>
                 <button class="btn btn-secondary" id="btn-pause">Pausar</button>
-                <button class="btn btn-secondary" id="btn-next" style="color: #5AC8FA; font-weight: bold;">Siguiente</button>
+                <button class="btn btn-secondary" id="btn-next" style="color: #5AC8FA; font-weight: bold;">Sig. ⏭</button>
                 <button class="btn btn-secondary exit" id="btn-exit">Salir</button>
             </div>
         </div>
