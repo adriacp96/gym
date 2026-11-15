@@ -13,6 +13,7 @@
     padding: 0;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     user-select: none;
+    -webkit-tap-highlight-color: transparent;
 }
 
 body {
@@ -22,6 +23,11 @@ body {
     flex-direction: column;
     height: 100vh;
     overflow: hidden;
+    /* Respeta el notch, la isla dinámica y la barra inferior de iOS */
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
 }
 
 .screen {
@@ -39,7 +45,7 @@ body {
 /* Pantalla de Selección */
 .header {
     text-align: center;
-    padding: 20px 0 30px 0;
+    padding: 10px 0 20px 0;
     font-size: 28px;
     font-weight: 700;
 }
@@ -48,6 +54,10 @@ body {
     overflow-y: auto;
     flex: 1;
     padding-bottom: 20px;
+    /* En pantallas anchas, las tarjetas no se estiran al infinito */
+    max-width: 600px;
+    margin: 0 auto;
+    width: 100%;
 }
 
 .workout-card {
@@ -58,7 +68,6 @@ body {
     display: flex;
     flex-direction: column;
     gap: 12px;
-    box-shadow: 0 4px 6px rgba(0,0,0,0.3);
 }
 
 .workout-title {
@@ -97,7 +106,10 @@ body {
     flex-direction: column;
     align-items: center;
     justify-content: space-between;
-    padding-bottom: 30px;
+    padding-bottom: 10px;
+    width: 100%;
+    max-width: 1000px;
+    margin: 0 auto;
 }
 
 .workout-header {
@@ -105,7 +117,18 @@ body {
     color: var(--text-secondary);
     font-weight: 600;
     text-align: center;
-    margin-bottom: 10px;
+    margin-bottom: 15px;
+    width: 100%;
+}
+
+.content-wrapper {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    flex: 1;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
 }
 
 .gif-placeholder {
@@ -134,29 +157,27 @@ body {
 .exercise-info {
     text-align: center;
     width: 100%;
-    margin-top: 10px;
-    flex: 1;
     display: flex;
     flex-direction: column;
     justify-content: center;
+    align-items: center;
 }
 
 .exercise-name {
-    font-size: 26px;
+    font-size: 24px;
     font-weight: bold;
-    margin-bottom: 15px;
-    min-height: 70px;
+    margin-bottom: 10px;
     display: flex;
     align-items: center;
     justify-content: center;
     line-height: 1.2;
+    min-height: 60px;
 }
 
 .timer-main {
-    font-size: 90px;
+    font-size: 100px;
     font-weight: 800;
     font-variant-numeric: tabular-nums;
-    margin: 10px 0;
     color: var(--primary-color);
     line-height: 1;
 }
@@ -169,16 +190,48 @@ body {
     font-size: 18px;
     color: var(--text-secondary);
     font-variant-numeric: tabular-nums;
-    margin-top: 10px;
+    margin-top: 15px;
 }
 
 .controls {
     width: 100%;
     display: flex;
     gap: 15px;
+    margin-top: 20px;
 }
 
 .btn-secondary {
     background-color: var(--surface-color);
     color: var(--text-color);
+}
+
+/* ========================================================= */
+/* MEDIA QUERIES: MODO HORIZONTAL / PANTALLA DIVIDIDA / DUO  */
+/* ========================================================= */
+@media (orientation: landscape) and (max-height: 600px), (min-width: 650px) {
+    /* Convierte el diseño en dos columnas lado a lado */
+    .content-wrapper {
+        flex-direction: row;
+        align-items: stretch;
+    }
+
+    .gif-placeholder {
+        flex: 1;
+        max-width: 50%;
+        height: 100%;
+        aspect-ratio: auto; /* Permite que el GIF se adapte al alto disponible */
+    }
+
+    .exercise-info {
+        flex: 1;
+        justify-content: center;
+    }
+
+    .timer-main {
+        font-size: 12vh; /* Escala el reloj según el alto de la pantalla */
+    }
+
+    .exercise-name {
+        font-size: clamp(20px, 4vh, 28px);
+    }
 }
