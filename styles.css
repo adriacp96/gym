@@ -130,7 +130,7 @@ body.bg-rest .light-2 { background: radial-gradient(circle, #FF9500, #4d1900); }
 .content-wrapper { display: flex; flex-direction: column; width: 100%; flex: 1; align-items: center; justify-content: center; gap: 14px; min-height: 0; }
 
 /* ========================================================= */
-/* IMAGEN FLOTANTE SIN RECUADRO + CONTORNO DINÁMICO PNG      */
+/* IMAGEN FLOTANTE SIN RECUADRO + CONTORNO PERIMETRAL PNG    */
 /* ========================================================= */
 .gif-placeholder { 
     position: relative; 
@@ -159,10 +159,11 @@ body.bg-rest .light-2 { background: radial-gradient(circle, #FF9500, #4d1900); }
     will-change: transform, opacity;
 }
 
-/* Mismo ancho uniforme para todas las ilustraciones PNG */
+/* Mismo ancho uniforme y margen de 6px para alojar la línea perimetral */
 .floating-figure-stage img {
     width: 100%;
     height: 100%;
+    padding: 6px;
     object-fit: contain;
     display: block;
     position: relative;
@@ -170,7 +171,7 @@ body.bg-rest .light-2 { background: radial-gradient(circle, #FF9500, #4d1900); }
     filter: drop-shadow(0 12px 24px rgba(0, 0, 0, 0.55));
 }
 
-/* Canvas que dibuja el contorno luminoso exacto sobre el PNG */
+/* Canvas que dibuja la línea continua siguiendo el perímetro del PNG */
 .png-outline-canvas {
     position: absolute;
     inset: 0;
@@ -178,12 +179,12 @@ body.bg-rest .light-2 { background: radial-gradient(circle, #FF9500, #4d1900); }
     height: 100%;
     z-index: 3;
     pointer-events: none;
-    filter: drop-shadow(0 0 8px rgba(0, 242, 254, 0.7));
+    filter: drop-shadow(0 0 8px rgba(0, 242, 254, 0.75));
     transition: filter 0.4s ease;
 }
 
 .png-outline-canvas.rest-mode {
-    filter: drop-shadow(0 0 8px rgba(255, 45, 85, 0.75));
+    filter: drop-shadow(0 0 8px rgba(255, 45, 85, 0.8));
 }
 
 /* Animaciones de entrada/salida de la figura flotante */
