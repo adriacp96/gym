@@ -21,5 +21,4 @@ const workoutsData = [
             { name: "Plancha alta", duration: 30, isRest: false, gif: "" }
         ]
     }
-    // Puedes añadir más entrenamientos poniendo una coma (,) aquí arriba y copiando el bloque
 ];
