@@ -42,6 +42,31 @@ function playBeep(type) {
     }
 }
 
+// --- PRECARGA DE IMÁGENES EN SEGUNDO PLANO ---
+const preloadedImageCache = {};
+
+function preloadAllImages() {
+    const uniqueUrls = new Set();
+    workoutsData.forEach(workout => {
+        workout.routine.forEach(step => {
+            if (step.png && step.png !== "") {
+                uniqueUrls.add(step.png);
+            }
+        });
+    });
+
+    uniqueUrls.forEach(url => {
+        if (!preloadedImageCache[url]) {
+            const img = new Image();
+            img.src = url;
+            if (img.decode) {
+                img.decode().catch(() => {}); // Decodifica en memoria para renderizado instantáneo
+            }
+            preloadedImageCache[url] = img;
+        }
+    });
+}
+
 let currentRoutine = [];
 let currentStepIndex = 0;
 let timeRemainingInStep = 0;
@@ -84,6 +109,10 @@ const countdownDisplay = document.getElementById('countdown-display');
 
 function initApp() {
     document.body.className = 'bg-default';
+    
+    // Precargar todas las imágenes en segundo plano nada más abrir la app
+    preloadAllImages();
+
     workoutsData.forEach((workout, index) => {
         const card = document.createElement('div');
         card.className = 'workout-card';
