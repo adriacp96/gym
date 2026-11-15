@@ -67,6 +67,7 @@ const elTimerMain = document.getElementById('timer-main');
 const elTimerTotal = document.getElementById('timer-total');
 const elStepRing = document.getElementById('step-progress-ring');
 const elIndicatorWrapper = document.getElementById('timer-indicator-wrapper');
+const btnPrev = document.getElementById('btn-prev');
 const btnPause = document.getElementById('btn-pause');
 const btnNext = document.getElementById('btn-next');
 const btnExit = document.getElementById('btn-exit');
@@ -98,6 +99,7 @@ function initApp() {
         });
     });
 
+    btnPrev.addEventListener('click', prevStep);
     btnPause.addEventListener('click', togglePause);
     btnNext.addEventListener('click', skipStep);
     btnExit.addEventListener('click', endWorkout);
@@ -147,6 +149,15 @@ function calculateTotalTime() {
     return currentRoutine.reduce((total, step) => total + step.duration, 0);
 }
 
+// Calcula el tiempo restante sumando desde un índice concreto hasta el final
+function calculateRemainingFromIndex(startIndex) {
+    let total = 0;
+    for (let i = startIndex; i < currentRoutine.length; i++) {
+        total += currentRoutine[i].duration;
+    }
+    return total;
+}
+
 // Cuenta únicamente los ejercicios reales (ignora los descansos)
 function getExerciseCounterText(stepIndex) {
     const totalExercises = currentRoutine.filter(step => !step.isRest).length;
@@ -176,7 +187,6 @@ function updateNextExercisePreview(fromIndex) {
     }
 }
 
-// Dibuja el anillo exterior con el mismo diseño moderno (grosor 10, bordes redondeados y gradiente)
 function drawSegments() {
     const container = document.getElementById('timer-segments');
     container.innerHTML = '';
@@ -245,7 +255,6 @@ function prepareWorkout(index) {
     elTimerMain.classList.remove('rest');
     elTimerTotal.innerText = formatTime(totalTimeRemaining);
     
-    // Al estar en preparación, el "Siguiente" es el primer ejercicio
     elNextExerciseName.innerText = `${currentRoutine[0].name} (${currentRoutine[0].duration}s)`;
 
     imgGif.style.display = "none";
@@ -273,6 +282,7 @@ function loadStep(index) {
     const step = currentRoutine[index];
     currentStepDuration = step.duration;
     timeRemainingInStep = step.duration;
+    totalTimeRemaining = calculateRemainingFromIndex(index);
     
     elExerciseName.innerText = step.name;
     elStepCounter.innerText = getExerciseCounterText(index);
@@ -359,11 +369,26 @@ function togglePause() {
     }
 }
 
+// Retroceder al paso anterior (o reiniciar el primero si estás en el paso 0)
+function prevStep() {
+    if (currentRoutine.length === 0) return;
+
+    if (isPaused) {
+        isPaused = false;
+        btnPause.innerText = "Pausar";
+    }
+
+    if (currentStepIndex > 0) {
+        currentStepIndex--;
+    } else {
+        currentStepIndex = 0;
+    }
+    loadStep(currentStepIndex);
+}
+
+// Saltar al paso siguiente
 function skipStep() {
     if (currentStepIndex >= currentRoutine.length) return;
-    
-    totalTimeRemaining -= timeRemainingInStep;
-    if (totalTimeRemaining < 0) totalTimeRemaining = 0;
     
     if (isPaused) {
         isPaused = false;
