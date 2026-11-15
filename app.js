@@ -1,9 +1,12 @@
-// --- SISTEMA DE AUDIO (PITIDOS + VOZ EN STREAMING SIN PAUSAR MÚSICA EN iOS) ---
+// --- SISTEMA DE AUDIO (PITIDOS + VOZ GUIADA SIN CORTAR MÚSICA EN iOS) ---
 let isSoundEnabled = true;
 let isVoiceEnabled = true;
 let audioCtx = null;
 let keepAliveOsc = null;
-let currentVoiceAudio = null;
+let voicePlayer = null;
+
+// Micro-audio WAV silencioso en Base64 para desbloquear el reproductor de iOS en el primer toque
+const SILENT_WAV = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA";
 
 const motivationalPhrases = [
     "¡Vamos, tú puedes!",
@@ -13,7 +16,7 @@ const motivationalPhrases = [
     "¡Aguanta fuerte, aprieta el abdomen!"
 ];
 
-// Fuerza a iOS a mantener la sesión en modo 'ambient' (mezclar con Apple Music / Spotify sin pausarlos)
+// Fuerza a iOS a mantener la sesión en modo 'ambient' (mezclar con Apple Music / Spotify)
 function enforceAmbientAudioSession() {
     if ('audioSession' in navigator) {
         try {
@@ -32,14 +35,13 @@ function initAudio() {
         audioCtx.resume();
     }
     
-    // Oscilador subsónico inaudible continuo: mantiene vivo el canal 'ambient' durante todo el entreno
-    // para que iOS nunca tome control exclusivo ni pause la música de fondo.
+    // Oscilador subsónico continuo para mantener vivo el mezclador de audio de iOS
     if (!keepAliveOsc && audioCtx) {
         try {
             keepAliveOsc = audioCtx.createOscillator();
             const silentGain = audioCtx.createGain();
             keepAliveOsc.frequency.value = 1;
-            silentGain.gain.value = 0.00001; // Inaudible
+            silentGain.gain.value = 0.00001;
             keepAliveOsc.connect(silentGain);
             silentGain.connect(audioCtx.destination);
             keepAliveOsc.start();
@@ -47,13 +49,32 @@ function initAudio() {
     }
 }
 
-// Prepara el reproductor HTML5 en el clic del usuario para autorizarlo en Safari iOS
+// Desbloquea tanto el reproductor de streaming como el motor nativo en el clic del usuario
 function unlockSpeech() {
     enforceAmbientAudioSession();
-    if (!currentVoiceAudio) {
-        currentVoiceAudio = new Audio();
-        currentVoiceAudio.playsInline = true;
-        currentVoiceAudio.volume = 1.0;
+
+    if (!voicePlayer) {
+        voicePlayer = new Audio();
+        voicePlayer.playsInline = true;
+        voicePlayer.setAttribute('playsinline', '');
+        voicePlayer.setAttribute('webkit-playsinline', '');
+        // Imprescindible para que el servidor de voz no bloquee las peticiones desde GitHub Pages
+        voicePlayer.referrerPolicy = 'no-referrer';
+    }
+
+    // Reproducir el WAV silencioso en el evento de clic autoriza a voicePlayer para todo el entrenamiento
+    voicePlayer.src = SILENT_WAV;
+    voicePlayer.volume = 0.01;
+    const p = voicePlayer.play();
+    if (p !== undefined) {
+        p.then(() => {
+            voicePlayer.pause();
+            voicePlayer.volume = 1.0;
+        }).catch(() => {});
+    }
+
+    if ('speechSynthesis' in window) {
+        window.speechSynthesis.getVoices();
     }
 }
 
@@ -66,39 +87,72 @@ function formatSpeechName(name) {
         .replace(/\(Derecho\)/gi, 'lado derecho');
 }
 
-// Reproduce la voz como un flujo de audio estándar mezclable (NUNCA usa speechSynthesis para no pausar la música)
+// Respaldo con el motor del sistema forzando la sesión ambiental en el milisegundo en que arranca
+function speakFallbackNative(text, forceInterrupt) {
+    if (!('speechSynthesis' in window)) return;
+
+    if (forceInterrupt && window.speechSynthesis.speaking) {
+        window.speechSynthesis.cancel();
+    }
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'es-ES';
+    utterance.rate = 1.05;
+    utterance.volume = 1.0;
+
+    const voices = window.speechSynthesis.getVoices();
+    const spanishVoice = voices.find(v => v.lang.startsWith('es'));
+    if (spanishVoice) utterance.voice = spanishVoice;
+
+    utterance.onstart = () => {
+        // Re-forzar 'ambient' justo después de que iOS inicie el sintetizador evita el corte de música
+        enforceAmbientAudioSession();
+        setTimeout(enforceAmbientAudioSession, 50);
+    };
+
+    utterance.onend = () => {
+        enforceAmbientAudioSession();
+    };
+
+    window.speechSynthesis.speak(utterance);
+}
+
+// Reproduce la voz usando audio web con no-referrer (no pausa la música) y fallback automático
 function speakText(text, forceInterrupt = false) {
     if (!isVoiceEnabled) return;
     
     initAudio();
     enforceAmbientAudioSession();
 
-    if (!currentVoiceAudio) {
-        currentVoiceAudio = new Audio();
-        currentVoiceAudio.playsInline = true;
+    if (!voicePlayer) {
+        unlockSpeech();
     }
 
-    if (!forceInterrupt && !currentVoiceAudio.paused) {
-        return; // Si ya está hablando y no es prioritario, no solapar
+    if (!forceInterrupt && voicePlayer && !voicePlayer.paused) {
+        return;
     }
+
+    const encodedText = encodeURIComponent(text);
+    // Usamos el cliente gtx con política no-referrer para evitar bloqueos en GitHub Pages
+    const ttsUrl = `https://translate.googleapis.com/translate_tts?ie=UTF-8&tl=es&client=gtx&q=${encodedText}`;
 
     try {
-        currentVoiceAudio.pause();
-    } catch (e) {}
+        voicePlayer.pause();
+        voicePlayer.referrerPolicy = 'no-referrer';
+        voicePlayer.src = ttsUrl;
+        voicePlayer.volume = 1.0;
 
-    // Generador TTS ligero en español que se reproduce como audio web normal (se mezcla con tu música)
-    const encodedText = encodeURIComponent(text);
-    const ttsUrl = `https://translate.googleapis.com/translate_tts?ie=UTF-8&q=${encodedText}&tl=es&client=tw-ob`;
-
-    currentVoiceAudio.src = ttsUrl;
-    currentVoiceAudio.volume = 1.0;
-
-    // Mientras habla, bajamos sutilmente los pitidos si coinciden y aseguramos modo ambient
-    const playPromise = currentVoiceAudio.play();
-    if (playPromise !== undefined) {
-        playPromise.catch(() => {
-            // Si el usuario está totalmente offline sin caché, ignora silenciosamente sin cortar la música
-        });
+        const playPromise = voicePlayer.play();
+        if (playPromise !== undefined) {
+            playPromise.then(() => {
+                enforceAmbientAudioSession();
+            }).catch(() => {
+                // Si falla la red o el stream, usa la voz nativa de respaldo para que nunca te quedes sin guía
+                speakFallbackNative(text, forceInterrupt);
+            });
+        }
+    } catch (e) {
+        speakFallbackNative(text, forceInterrupt);
     }
 }
 
@@ -245,8 +299,9 @@ function initApp() {
         if (isVoiceEnabled) {
             unlockSpeech();
             speakText("Guía de voz activada", true);
-        } else if (currentVoiceAudio) {
-            currentVoiceAudio.pause();
+        } else {
+            if (voicePlayer) voicePlayer.pause();
+            if ('speechSynthesis' in window) window.speechSynthesis.cancel();
         }
     });
 }
@@ -541,7 +596,8 @@ function skipStep() {
 function endWorkout() {
     if (timerInterval) clearInterval(timerInterval);
     if (prestartInterval) clearInterval(prestartInterval);
-    if (currentVoiceAudio) currentVoiceAudio.pause();
+    if (voicePlayer) voicePlayer.pause();
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
     screenWorkout.classList.remove('active');
     screenSelector.classList.add('active');
     document.body.className = 'bg-default';
