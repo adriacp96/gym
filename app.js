@@ -124,7 +124,6 @@ function extractOrderedPerimeterPath(imgEl) {
     const src = imgEl.getAttribute('src');
     if (!src || !imgEl.complete || imgEl.naturalWidth === 0) return null;
 
-    // Usar offsetWidth/offsetHeight para ignorar el transform: scale() de la animación de entrada
     const stageW = floatingStage.offsetWidth;
     const stageH = floatingStage.offsetHeight;
     if (stageW === 0 || stageH === 0) return null;
@@ -138,7 +137,6 @@ function extractOrderedPerimeterPath(imgEl) {
         return perimeterPathCache[cacheKey];
     }
 
-    // Cálculo idéntico al object-fit: contain del navegador sin márgenes ni desplazamientos
     const imgRatio = imgEl.naturalWidth / imgEl.naturalHeight;
     const boxRatio = w / h;
     let drawW, drawH, drawX, drawY;
@@ -159,7 +157,6 @@ function extractOrderedPerimeterPath(imgEl) {
     tempCanvas.height = h;
     const tCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
 
-    // Dibujar exactamente en la misma posición y tamaño que el <img>
     tCtx.drawImage(imgEl, drawX, drawY, drawW, drawH);
 
     const imgData = tCtx.getImageData(0, 0, w, h).data;
@@ -168,7 +165,6 @@ function extractOrderedPerimeterPath(imgEl) {
         return imgData[(y * w + x) * 4 + 3] > 80;
     };
 
-    // Buscar punto inicial en la parte superior central (12 en punto)
     let startX = -1, startY = -1;
     const centerX = Math.floor(w / 2);
     outerLoop:
@@ -191,7 +187,6 @@ function extractOrderedPerimeterPath(imgEl) {
 
     if (startX === -1) return null;
 
-    // 8 vecinos en sentido horario (Moore-Neighbor tracing)
     const dirs = [
         [0, -1],  // 0: N
         [1, -1],  // 1: NE
@@ -211,7 +206,6 @@ function extractOrderedPerimeterPath(imgEl) {
     let steps = 0;
 
     do {
-        // +0.5 para centrar el trazo exactamente en el borde del píxel
         rawPoints.push({ x: cx + 0.5, y: cy + 0.5 });
         let foundNext = false;
         const startSearch = (backtrackDir + 1) % 8;
@@ -233,7 +227,6 @@ function extractOrderedPerimeterPath(imgEl) {
 
     if (rawPoints.length < 10) return null;
 
-    // Suavizado ligero sin encoger la silueta
     const sampleStep = Math.max(1, Math.round(1.5 * dpr));
     const sampled = [];
     for (let i = 0; i < rawPoints.length; i += sampleStep) {
@@ -252,7 +245,6 @@ function extractOrderedPerimeterPath(imgEl) {
         });
     }
 
-    // Cerrar el circuito en el mismo punto de inicio
     smoothed.push({ x: smoothed[0].x, y: smoothed[0].y });
 
     const cumLengths = [0];
@@ -299,7 +291,6 @@ function renderPngDynamicOutline(fractionRemaining) {
     ctx.lineJoin = 'round';
     ctx.lineWidth = lineWidth;
 
-    // 1. Guía perimetral tenue
     ctx.beginPath();
     ctx.moveTo(points[0].x, points[0].y);
     for (let i = 1; i < points.length; i++) {
@@ -308,7 +299,6 @@ function renderPngDynamicOutline(fractionRemaining) {
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.14)';
     ctx.stroke();
 
-    // 2. Trazo activo continuo exacto sobre el borde del dibujo
     const clamped = Math.max(0, Math.min(1, fractionRemaining));
     const targetLength = totalLength * clamped;
 
@@ -347,7 +337,6 @@ function renderPngDynamicOutline(fractionRemaining) {
         ctx.strokeStyle = grad;
         ctx.stroke();
 
-        // Punto luminoso en el extremo que recorre la silueta
         if (clamped < 0.995) {
             ctx.beginPath();
             ctx.arc(tipX, tipY, lineWidth * 0.7, 0, Math.PI * 2);
@@ -570,9 +559,11 @@ function loadStep(index) {
     const step = currentRoutine[index];
     currentStepDuration = step.duration;
     futureStepsTime = calculateFutureTimeAfter(index);
-    stepEndTimestamp = performance.now() + (step.duration * 1000);
-    lastDisplayedSecond = step.duration;
     
+    // Actualizar números y UI del contador de forma instantánea sin esperar al siguiente frame
+    lastDisplayedSecond = step.duration;
+    elTimerMain.innerText = step.duration;
+    elTimerTotal.innerText = formatTime(futureStepsTime + step.duration);
     elExerciseName.innerText = step.name;
     elStepCounter.innerText = getExerciseCounterText(index);
     updateNextExercisePreview(index);
@@ -641,6 +632,8 @@ function loadStep(index) {
         textGif.innerHTML = step.isRest ? "Toma un respiro" : "Imagen<br>(Sin archivo asignado)";
     }
 
+    // Fijar el tiempo exacto de inicio tras haber renderizado la transición visual
+    stepEndTimestamp = performance.now() + (step.duration * 1000);
     renderContinuousFrame(step.duration * 1000);
 }
 
@@ -653,10 +646,9 @@ function startSmoothLoop() {
             if (remainingMs <= 0) {
                 currentStepIndex++;
                 loadStep(currentStepIndex);
-                if (currentStepIndex >= currentRoutine.length) return;
-            } else {
-                renderContinuousFrame(remainingMs);
+                return;
             }
+            renderContinuousFrame(remainingMs);
         }
         animFrameId = requestAnimationFrame(tick);
     }
