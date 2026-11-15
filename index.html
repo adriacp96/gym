@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Entrenamiento Guiado</title>
+    <style>
+        :root {
+            --bg-color: #121212;
+            --surface-color: #1e1e1e;
+            --primary-color: #0A84FF; /* Azul estilo iOS */
+            --rest-color: #FF453A; /* Rojo para descanso */
+            --text-color: #ffffff;
+            --text-secondary: #8E8E93;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            user-select: none;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .screen {
+            display: none;
+            flex-direction: column;
+            height: 100%;
+            width: 100%;
+            padding: 20px;
+        }
+
+        .screen.active {
+            display: flex;
+        }
+
+        /* Pantalla de Selección */
+        .header {
+            text-align: center;
+            padding: 20px 0;
+            font-size: 24px;
+            font-weight: bold;
+        }
+
+        .workout-card {
+            background-color: var(--surface-color);
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .workout-title {
+            font-size: 20px;
+            font-weight: 600;
+        }
+
+        .workout-meta {
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+
+        .btn {
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            padding: 16px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            text-align: center;
+            width: 100%;
+            transition: opacity 0.2s;
+        }
+
+        .btn:active {
+            opacity: 0.8;
+        }
+
+        /* Pantalla de Entrenamiento */
+        .workout-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: space-between;
+            padding-bottom: 30px;
+        }
+
+        .gif-placeholder {
+            width: 100%;
+            max-width: 400px;
+            aspect-ratio: 4/3;
+            background-color: var(--surface-color);
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-secondary);
+            font-size: 14px;
+            text-align: center;
+            margin-top: 20px;
+            border: 2px dashed #333;
+            overflow: hidden;
+        }
+
+        .gif-placeholder img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: none; /* Se mostrará si añades un src real */
+        }
+
+        .exercise-info {
+            text-align: center;
+            width: 100%;
+            margin-top: 20px;
+            flex: 1;
+        }
+
+        .exercise-name {
+            font-size: 28px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            min-height: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .timer-main {
+            font-size: 80px;
+            font-weight: 800;
+            font-variant-numeric: tabular-nums;
+            margin: 10px 0;
+            color: var(--primary-color);
+        }
+
+        .timer-main.rest {
+            color: var(--rest-color);
+        }
+
+        .timer-total {
+            font-size: 20px;
+            color: var(--text-secondary);
+            font-variant-numeric: tabular-nums;
+            margin-bottom: 20px;
+        }
+
+        .controls {
+            width: 100%;
+            display: flex;
+            gap: 15px;
+        }
+
+        .btn-secondary {
+            background-color: var(--surface-color);
+            color: var(--text-color);
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Pantalla 1: Selector de Ejercicios -->
+    <div id="screen-selector" class="screen active">
+        <div class="header">Mis Entrenamientos</div>
+        
+        <div class="workout-card">
+            <div class="workout-title">Plancha 5 Minutos</div>
+            <div class="workout-meta">15 intervalos • Resistencia Core</div>
+            <button class="btn" onclick="startWorkout()">Iniciar Entrenamiento</button>
+        </div>
+        <!-- Puedes añadir más tarjetas aquí en el futuro -->
+    </div>
+
+    <!-- Pantalla 2: Entrenamiento Activo -->
+    <div id="screen-workout" class="screen">
+        <div class="workout-container">
+            
+            <div class="gif-placeholder" id="gif-container">
+                <span id="gif-text">GIF / Video del Ejercicio<br>(Añade la URL en el código)</span>
+                <img id="exercise-gif" src="" alt="Ejercicio">
+            </div>
+
+            <div class="exercise-info">
+                <div class="exercise-name" id="exercise-name">Preparación...</div>
+                <div class="timer-main" id="timer-main">00</div>
+                <div class="timer-total">Total restante: <span id="timer-total">00:00</span></div>
+            </div>
+
+            <div class="controls">
+                <button class="btn btn-secondary" id="btn-pause" onclick="togglePause()">Pausar</button>
+                <button class="btn btn-secondary" style="background-color: #333;" onclick="endWorkout()">Salir</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Definición de la rutina
+        const routine = [
+            { name: "Plancha con levantamiento alternado de piernas", duration: 60, isRest: false },
+            { name: "Descanso", duration: 10, isRest: true },
+            { name: "Plancha alta", duration: 60, isRest: false },
+            { name: "Descanso", duration: 10, isRest: true },
+            { name: "Plancha lateral con flex. rodillas (Izquierdo)", duration: 30, isRest: false },
+            { name: "Descanso", duration: 10, isRest: true },
+            { name: "Plancha lateral con flex. rodillas (Derecho)", duration: 30, isRest: false },
+            { name: "Descanso", duration: 10, isRest: true },
+            { name: "Plancha con deslizamiento", duration: 30, isRest: false },
+            { name: "Descanso", duration: 10, isRest: true },
+            { name: "Plancha con estiramientos (Izquierdo)", duration: 30, isRest: false },
+            { name: "Descanso", duration: 10, isRest: true },
+            { name: "Plancha con estiramientos (Derecho)", duration: 30, isRest: false },
+            { name: "Descanso", duration: 10, isRest: true },
+            { name: "Plancha alta", duration: 30, isRest: false }
+        ];
+
+        let currentStepIndex = 0;
+        let timeRemainingInStep = 0;
+        let totalTimeRemaining = 0;
+        let timerInterval = null;
+        let isPaused = false;
+
+        const screenSelector = document.getElementById('screen-selector');
+        const screenWorkout = document.getElementById('screen-workout');
+        const elExerciseName = document.getElementById('exercise-name');
+        const elTimerMain = document.getElementById('timer-main');
+        const elTimerTotal = document.getElementById('timer-total');
+        const btnPause = document.getElementById('btn-pause');
+
+        function formatTime(seconds) {
+            const m = Math.floor(seconds / 60);
+            const s = seconds % 60;
+            return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+        }
+
+        function calculateTotalTime() {
+            return routine.reduce((total, step) => total + step.duration, 0);
+        }
+
+        function startWorkout() {
+            // Cambiar de pantalla
+            screenSelector.classList.remove('active');
+            screenWorkout.classList.add('active');
+
+            // Inicializar variables
+            currentStepIndex = 0;
+            totalTimeRemaining = calculateTotalTime();
+            isPaused = false;
+            btnPause.innerText = "Pausar";
+            
+            loadStep(currentStepIndex);
+            
+            // Iniciar el loop del temporizador (corre cada 1 segundo)
+            if (timerInterval) clearInterval(timerInterval);
+            timerInterval = setInterval(updateTimer, 1000);
+        }
+
+        function loadStep(index) {
+            if (index >= routine.length) {
+                finishWorkout();
+                return;
+            }
+
+            const step = routine[index];
+            timeRemainingInStep = step.duration;
+            elExerciseName.innerText = step.name;
+            
+            // Cambiar el color si es descanso
+            if (step.isRest) {
+                elTimerMain.classList.add('rest');
+                // Aquí podrías cambiar el GIF a algo estático o de descanso
+            } else {
+                elTimerMain.classList.remove('rest');
+                // Para agregar GIFs reales, puedes mapear step.name con URLs de tu GitHub
+                // document.getElementById('exercise-gif').src = "url-de-tu-gif.gif";
+                // document.getElementById('exercise-gif').style.display = "block";
+                // document.getElementById('gif-text').style.display = "none";
+            }
+
+            updateUI();
+        }
+
+        function updateTimer() {
+            if (isPaused) return;
+
+            if (timeRemainingInStep > 0) {
+                timeRemainingInStep--;
+                totalTimeRemaining--;
+                updateUI();
+            } else {
+                // Siguiente ejercicio/descanso
+                currentStepIndex++;
+                loadStep(currentStepIndex);
+                
+                // Opcional: Sonido al cambiar de ejercicio
+                // const beep = new Audio('url-de-un-beep.mp3');
+                // beep.play().catch(()=>{});
+            }
+        }
+
+        function updateUI() {
+            elTimerMain.innerText = timeRemainingInStep;
+            elTimerTotal.innerText = formatTime(totalTimeRemaining);
+        }
+
+        function togglePause() {
+            isPaused = !isPaused;
+            btnPause.innerText = isPaused ? "Reanudar" : "Pausar";
+        }
+
+        function endWorkout() {
+            if (timerInterval) clearInterval(timerInterval);
+            screenWorkout.classList.remove('active');
+            screenSelector.classList.add('active');
+        }
+
+        function finishWorkout() {
+            if (timerInterval) clearInterval(timerInterval);
+            elExerciseName.innerText = "¡Entrenamiento Completado!";
+            elTimerMain.innerText = "0";
+            elTimerTotal.innerText = "00:00";
+            setTimeout(() => {
+                endWorkout();
+            }, 3000);
+        }
+    </script>
+</body>
+</html>
