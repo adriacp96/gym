@@ -2,10 +2,8 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <!-- viewport-fit=cover permite que la app ocupe toda la pantalla respetando los bordes redondos -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     
-    <!-- Etiquetas para que funcione como App Nativa en iOS (PWA) -->
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Entrenos">
@@ -17,9 +15,12 @@
 
     <!-- Pantalla 1: Selector de Ejercicios -->
     <div id="screen-selector" class="screen active">
-        <div class="header">Mis Entrenamientos</div>
+        <div class="top-bar">
+            <div class="header-title">Entrenamientos</div>
+            <button id="btn-sound" class="btn-sound">🔊 Sonido ON</button>
+        </div>
         <div class="workout-list" id="workout-list">
-            <!-- Las tarjetas se generan automáticamente aquí con JavaScript -->
+            <!-- Las tarjetas se generan automáticamente aquí -->
         </div>
     </div>
 
@@ -29,7 +30,6 @@
             
             <div class="workout-header" id="current-workout-title">Título del Entrenamiento</div>
 
-            <!-- Contenedor para adaptar a 2 columnas en apaisado -->
             <div class="content-wrapper">
                 <div class="gif-placeholder" id="gif-container">
                     <span id="gif-text">GIF / Video<br>(Sin archivo asignado)</span>
@@ -50,7 +50,6 @@
         </div>
     </div>
 
-    <!-- Cargar primero los datos y luego la lógica -->
     <script src="data.js"></script>
     <script src="app.js"></script>
 </body>
