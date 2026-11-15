@@ -60,7 +60,7 @@ function preloadAllImages() {
             const img = new Image();
             img.src = url;
             if (img.decode) {
-                img.decode().catch(() => {}); // Decodifica en memoria para renderizado instantáneo
+                img.decode().catch(() => {});
             }
             preloadedImageCache[url] = img;
         }
@@ -100,7 +100,11 @@ const btnNext = document.getElementById('btn-next');
 const btnExit = document.getElementById('btn-exit');
 const btnSound = document.getElementById('btn-sound');
 const gifContainer = document.getElementById('gif-container');
+const floatingStage = document.getElementById('floating-figure-stage');
 const imgGif = document.getElementById('exercise-gif');
+const maskPngImg = document.getElementById('mask-png-img');
+const pngOutlineSvg = document.getElementById('png-outline-svg');
+const silhouetteProgressFill = document.getElementById('silhouette-progress-fill');
 const textGif = document.getElementById('gif-text');
 const readyOverlay = document.getElementById('ready-overlay');
 const btnStartPlay = document.getElementById('btn-start-play');
@@ -109,8 +113,6 @@ const countdownDisplay = document.getElementById('countdown-display');
 
 function initApp() {
     document.body.className = 'bg-default';
-    
-    // Precargar todas las imágenes en segundo plano nada más abrir la app
     preloadAllImages();
 
     workoutsData.forEach((workout, index) => {
@@ -264,6 +266,11 @@ function highlightSegments(activeIndex) {
     });
 }
 
+function setMaskImageHref(url) {
+    maskPngImg.setAttribute('href', url);
+    maskPngImg.setAttributeNS('http://www.w3.org/1999/xlink', 'href', url);
+}
+
 function prepareWorkout(index) {
     const workout = workoutsData[index];
     currentRoutine = workout.routine;
@@ -287,11 +294,12 @@ function prepareWorkout(index) {
     
     elNextExerciseName.innerText = `${currentRoutine[0].name} (${currentRoutine[0].duration}s)`;
 
-    // Limpiar posibles restos de animación previa
+    // Limpiar restos de animación previa
     gifContainer.querySelectorAll('.slide-out-left').forEach(el => el.remove());
-    imgGif.classList.remove('slide-in-right');
-    imgGif.style.display = "none";
+    floatingStage.classList.remove('slide-in-right');
+    floatingStage.style.display = "none";
     imgGif.removeAttribute('src');
+    setMaskImageHref('');
     textGif.style.display = "block";
     textGif.innerHTML = "Pulsa Play cuando estés listo";
 
@@ -328,37 +336,47 @@ function loadStep(index) {
     if (step.isRest) {
         elTimerMain.classList.add('rest');
         elStepRing.setAttribute('stroke', 'url(#grad-rest)');
+        pngOutlineSvg.classList.add('rest-mode');
+        silhouetteProgressFill.classList.add('rest-mode');
         document.body.className = 'bg-rest';
     } else {
         elTimerMain.classList.remove('rest');
         elStepRing.setAttribute('stroke', 'url(#grad-active)');
+        pngOutlineSvg.classList.remove('rest-mode');
+        silhouetteProgressFill.classList.remove('rest-mode');
         document.body.className = 'bg-active';
     }
 
-    // Limpiar clones anteriores si se pulsa rápido
+    // Limpiar clones anteriores
     gifContainer.querySelectorAll('.slide-out-left').forEach(el => el.remove());
 
-    // Si había una imagen mostrándose, clonarla para que se deslice hacia la izquierda
-    if (imgGif.style.display === "block" && imgGif.getAttribute('src')) {
+    // Clonar la figura actual para que se deslice hacia la izquierda sin el SVG de máscara duplicado
+    if (floatingStage.style.display === "flex" && imgGif.getAttribute('src')) {
+        const outgoingStage = document.createElement('div');
+        outgoingStage.className = 'floating-figure-stage slide-out-left';
+        outgoingStage.style.display = 'flex';
         const outgoingImg = imgGif.cloneNode(true);
         outgoingImg.removeAttribute('id');
-        outgoingImg.className = 'slide-out-left';
-        gifContainer.appendChild(outgoingImg);
-        outgoingImg.addEventListener('animationend', () => outgoingImg.remove());
+        outgoingStage.appendChild(outgoingImg);
+        gifContainer.appendChild(outgoingStage);
+        outgoingStage.addEventListener('animationend', () => outgoingStage.remove());
     }
 
-    // Mostrar la nueva imagen deslizándose desde la derecha
+    // Mostrar la nueva figura flotante deslizándose desde la derecha con su contorno dinámico
     if (step.png && step.png !== "") {
-        imgGif.classList.remove('slide-in-right');
+        floatingStage.classList.remove('slide-in-right');
         imgGif.src = step.png;
-        imgGif.style.display = "block";
+        setMaskImageHref(step.png);
+        silhouetteProgressFill.style.setProperty('--progress-deg', '360deg');
+        floatingStage.style.display = "flex";
         textGif.style.display = "none";
-        void imgGif.offsetWidth; // Forzar reflujo para reiniciar la animación
-        imgGif.classList.add('slide-in-right');
+        void floatingStage.offsetWidth;
+        floatingStage.classList.add('slide-in-right');
     } else {
-        imgGif.classList.remove('slide-in-right');
-        imgGif.style.display = "none";
+        floatingStage.classList.remove('slide-in-right');
+        floatingStage.style.display = "none";
         imgGif.removeAttribute('src');
+        setMaskImageHref('');
         textGif.style.display = "block";
         textGif.innerHTML = step.isRest ? "Toma un respiro" : "Imagen<br>(Sin archivo asignado)";
     }
@@ -405,6 +423,10 @@ function updateUI() {
         const fractionRemaining = timeRemainingInStep / currentStepDuration;
         const offset = INNER_C * (1 - fractionRemaining);
         elStepRing.style.strokeDashoffset = offset;
+
+        // Sincronizar el contorno dinámico del PNG con el tiempo restante
+        const remainingDeg = Math.max(0, Math.min(360, fractionRemaining * 360));
+        silhouetteProgressFill.style.setProperty('--progress-deg', `${remainingDeg}deg`);
     }
 }
 
@@ -466,6 +488,7 @@ function finishWorkout() {
     
     highlightSegments(currentRoutine.length);
     elStepRing.style.strokeDashoffset = 0;
+    silhouetteProgressFill.style.setProperty('--progress-deg', '0deg');
     
     playBeep('start');
     setTimeout(() => {
