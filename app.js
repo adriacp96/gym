@@ -1,11 +1,11 @@
-// --- SISTEMA DE AUDIO UNIFICADO POR WEB AUDIO API (VOZ + PITIDOS EN EL MISMO CANAL) ---
+// --- SISTEMA DE AUDIO DEFINITIVO PARA iOS (WEB AUDIO API + CORS TTS) ---
 let isSoundEnabled = true;
 let isVoiceEnabled = true;
 let audioCtx = null;
 let keepAliveOsc = null;
 let currentVoiceSource = null;
 
-// Caché en memoria RAM para guardar los audios de voz decodificados (AudioBuffer)
+// Caché en memoria RAM para reproducir las frases al instante
 const voiceBufferCache = new Map();
 
 const motivationalPhrases = [
@@ -16,9 +16,9 @@ const motivationalPhrases = [
     "¡Aguanta fuerte, aprieta el abdomen!"
 ];
 
-// Controla la sesión de audio de iOS:
-// 'ambient' -> música al 100% mezclada con la app
-// 'transient' -> baja ligeramente el volumen de la música (ducking) sin pausarla mientras habla
+// Controla el mezclador nativo de iOS:
+// 'ambient' -> música al 100% mezclada con la web
+// 'transient' -> baja ligeramente la música de fondo (ducking) mientras habla sin pausarla
 function setIOSAudioSession(mode) {
     if ('audioSession' in navigator) {
         try {
@@ -37,7 +37,7 @@ function initAudio() {
         audioCtx.resume();
     }
     
-    // Oscilador inaudible continuo: mantiene despierto el motor WebAudio en el iPhone durante toda la rutina
+    // Mantiene el canal de audio abierto en el iPhone durante todo el entrenamiento
     if (!keepAliveOsc && audioCtx) {
         try {
             keepAliveOsc = audioCtx.createOscillator();
@@ -51,7 +51,7 @@ function initAudio() {
     }
 }
 
-// Convierte abreviaturas para que la voz las lea de forma natural
+// Convierte abreviaturas para que la voz las pronuncie completas
 function formatSpeechName(name) {
     return name
         .replace(/flex\.\s*rodillas/gi, 'flexiones de rodillas')
@@ -60,7 +60,7 @@ function formatSpeechName(name) {
         .replace(/\(Derecho\)/gi, 'lado derecho');
 }
 
-// Descarga el audio de la frase y lo decodifica dentro del AudioContext para que iOS nunca lo bloquee
+// Descarga el audio de voz desde servidores con CORS habilitado (*) y lo decodifica en el AudioContext
 async function getVoiceBuffer(text) {
     if (voiceBufferCache.has(text)) {
         return voiceBufferCache.get(text);
@@ -68,21 +68,25 @@ async function getVoiceBuffer(text) {
 
     initAudio();
     const encoded = encodeURIComponent(text);
+    const googleUrl = `https://translate.googleapis.com/translate_tts?ie=UTF-8&tl=es&client=tw-ob&q=${encoded}`;
 
-    // Endpoints compatibles con CORS para descargar el ArrayBuffer de voz en español
-    const urls = [
-        `https://dict.youdao.com/dictvoice?audio=${encoded}&le=es`,
-        `https://translate.googleapis.com/translate_tts?ie=UTF-8&tl=es&client=gtx&q=${encoded}`
+    // 1. StreamElements API (Voz neural Conchita/Enrique con Access-Control-Allow-Origin: *)
+    // 2. Proxy CORS de respaldo por si falla el primero
+    const endpoints = [
+        `https://api.streamelements.com/kappa/v2/speech?voice=Conchita&text=${encoded}`,
+        `https://api.allorigins.win/raw?url=${encodeURIComponent(googleUrl)}`,
+        `https://corsproxy.io/?${encodeURIComponent(googleUrl)}`
     ];
 
-    for (const url of urls) {
+    for (const url of endpoints) {
         try {
-            const response = await fetch(url, { referrerPolicy: 'no-referrer' });
+            const response = await fetch(url);
             if (!response.ok) continue;
-            const arrayBuffer = await response.arrayBuffer();
-            if (arrayBuffer.byteLength < 200) continue;
 
-            // Clonar el buffer porque decodeAudioData lo consume en Safari
+            const arrayBuffer = await response.arrayBuffer();
+            if (arrayBuffer.byteLength < 500) continue;
+
+            // Decodificación compatible con todas las versiones de Safari iOS
             const audioBuffer = await new Promise((resolve, reject) => {
                 audioCtx.decodeAudioData(arrayBuffer.slice(0), resolve, reject);
             });
@@ -90,13 +94,13 @@ async function getVoiceBuffer(text) {
             voiceBufferCache.set(text, audioBuffer);
             return audioBuffer;
         } catch (e) {
-            // Intentar siguiente servidor si falla
+            // Si un servidor falla, pasa automáticamente al siguiente
         }
     }
     return null;
 }
 
-// Pre-carga en segundo plano todas las frases de la rutina en cuanto eliges el entrenamiento
+// Pre-carga en segundo plano todas las frases del entrenamiento al seleccionarlo
 function preloadWorkoutVoices(routine) {
     if (!routine) return;
     const phrases = new Set([
@@ -126,14 +130,14 @@ function preloadWorkoutVoices(routine) {
     });
 }
 
-// Reproduce la voz usando exactamente el mismo AudioContext que los pitidos
+// Reproduce la voz exactamente por el mismo canal WebAudio que los pitidos
 async function speakText(text, forceInterrupt = false) {
     if (!isVoiceEnabled) return;
 
     initAudio();
 
     if (!forceInterrupt && currentVoiceSource) {
-        return; // Si ya está hablando una frase y no es prioritaria, no solapar
+        return;
     }
 
     if (currentVoiceSource) {
@@ -152,14 +156,14 @@ async function speakText(text, forceInterrupt = false) {
             await audioCtx.resume();
         }
 
-        // Activar Audio Ducking en iOS (baja un poco el volumen de tu música sin pausarla)
+        // Baja ligeramente el volumen de Spotify / Apple Music sin pausar la canción
         setIOSAudioSession('transient');
 
         const source = audioCtx.createBufferSource();
         const gainNode = audioCtx.createGain();
 
         source.buffer = buffer;
-        gainNode.gain.value = 1.35; // Volumen claro por encima de la música atenuada
+        gainNode.gain.value = 1.6; // Volumen claro y potente para que destaque sobre la música
 
         source.connect(gainNode);
         gainNode.connect(audioCtx.destination);
@@ -169,7 +173,7 @@ async function speakText(text, forceInterrupt = false) {
         source.onended = () => {
             if (currentVoiceSource === source) {
                 currentVoiceSource = null;
-                // Devuelve la música al 100% de volumen cuando termina de hablar
+                // Restaura el volumen de tu música al 100% en cuanto termina la frase
                 setIOSAudioSession('ambient');
             }
         };
@@ -184,7 +188,6 @@ function playBeep(type) {
     if (!isSoundEnabled || !audioCtx) return;
     if (audioCtx.state === 'suspended') audioCtx.resume();
 
-    // Si no está hablando en este instante, mantenemos la sesión en modo ambient
     if (!currentVoiceSource) {
         setIOSAudioSession('ambient');
     }
@@ -435,7 +438,7 @@ function prepareWorkout(index) {
     currentRoutine = workout.routine;
     elWorkoutTitle.innerText = workout.title;
 
-    // Pre-cargar en memoria RAM todas las frases de voz de esta rutina para reproducción instantánea
+    // Descarga y decodifica en memoria todas las frases de voz de esta rutina
     preloadWorkoutVoices(currentRoutine);
 
     screenSelector.classList.remove('active');
