@@ -102,14 +102,155 @@ const btnSound = document.getElementById('btn-sound');
 const gifContainer = document.getElementById('gif-container');
 const floatingStage = document.getElementById('floating-figure-stage');
 const imgGif = document.getElementById('exercise-gif');
-const maskPngImg = document.getElementById('mask-png-img');
-const pngOutlineSvg = document.getElementById('png-outline-svg');
-const silhouetteProgressFill = document.getElementById('silhouette-progress-fill');
+const outlineCanvas = document.getElementById('png-outline-canvas');
 const textGif = document.getElementById('gif-text');
 const readyOverlay = document.getElementById('ready-overlay');
 const btnStartPlay = document.getElementById('btn-start-play');
 const btnCancelPlay = document.getElementById('btn-cancel-play');
 const countdownDisplay = document.getElementById('countdown-display');
+
+// =========================================================
+// MOTOR DE SILUETA LUMINOSA DINÁMICA PARA PNG EN CANVAS
+// =========================================================
+const silhouetteMaskCache = {};
+let activeSilhouetteMask = null;
+let lastFractionRendered = 1;
+
+function getSilhouetteOutlineMask(imgEl) {
+    const src = imgEl.getAttribute('src');
+    if (!src || !imgEl.complete || imgEl.naturalWidth === 0) return null;
+
+    const rect = floatingStage.getBoundingClientRect();
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const w = Math.max(1, Math.round(rect.width * dpr));
+    const h = Math.max(1, Math.round(rect.height * dpr));
+    const cacheKey = `${src}_${w}x${h}`;
+
+    if (silhouetteMaskCache[cacheKey]) {
+        return silhouetteMaskCache[cacheKey];
+    }
+
+    // Calcular encaje exacto (object-fit: contain)
+    const imgRatio = imgEl.naturalWidth / imgEl.naturalHeight;
+    const boxRatio = w / h;
+    let drawW, drawH, drawX, drawY;
+    if (imgRatio > boxRatio) {
+        drawW = w;
+        drawH = w / imgRatio;
+        drawX = 0;
+        drawY = (h - drawH) / 2;
+    } else {
+        drawH = h;
+        drawW = h * imgRatio;
+        drawX = (w - drawW) / 2;
+        drawY = 0;
+    }
+
+    const strokeThickness = Math.max(2.5, 3 * dpr);
+
+    // 1. Generar silueta expandida mediante sombras radiales en 16 direcciones
+    const expandedCanvas = document.createElement('canvas');
+    expandedCanvas.width = w;
+    expandedCanvas.height = h;
+    const eCtx = expandedCanvas.getContext('2d');
+
+    const steps = 16;
+    for (let i = 0; i < steps; i++) {
+        const angle = (i / steps) * Math.PI * 2;
+        const ox = Math.cos(angle) * strokeThickness;
+        const oy = Math.sin(angle) * strokeThickness;
+        eCtx.drawImage(imgEl, drawX + ox, drawY + oy, drawW, drawH);
+    }
+
+    // 2. Restar la imagen original del centro para dejar solo el borde exterior exacto
+    eCtx.globalCompositeOperation = 'destination-out';
+    eCtx.drawImage(imgEl, drawX, drawY, drawW, drawH);
+
+    // 3. Convertir a máscara blanca sólida
+    eCtx.globalCompositeOperation = 'source-in';
+    eCtx.fillStyle = '#ffffff';
+    eCtx.fillRect(0, 0, w, h);
+
+    silhouetteMaskCache[cacheKey] = expandedCanvas;
+    return expandedCanvas;
+}
+
+function renderPngDynamicOutline(fractionRemaining) {
+    lastFractionRendered = fractionRemaining;
+    const rect = floatingStage.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return;
+
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const w = Math.round(rect.width * dpr);
+    const h = Math.round(rect.height * dpr);
+
+    if (outlineCanvas.width !== w || outlineCanvas.height !== h) {
+        outlineCanvas.width = w;
+        outlineCanvas.height = h;
+    }
+
+    const ctx = outlineCanvas.getContext('2d');
+    ctx.clearRect(0, 0, w, h);
+
+    if (!activeSilhouetteMask) {
+        activeSilhouetteMask = getSilhouetteOutlineMask(imgGif);
+    }
+    if (!activeSilhouetteMask) return;
+
+    const isRest = currentRoutine[currentStepIndex]?.isRest;
+
+    // 1. Contorno base tenue (mismo estilo que el anillo de fondo rgba(255,255,255,0.12))
+    ctx.save();
+    ctx.globalAlpha = 0.18;
+    ctx.drawImage(activeSilhouetteMask, 0, 0, w, h);
+    ctx.restore();
+
+    // 2. Contorno de color activo sincronizado con el tiempo restante
+    const clamped = Math.max(0, Math.min(1, fractionRemaining));
+    if (clamped > 0) {
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = w;
+        tempCanvas.height = h;
+        const tCtx = tempCanvas.getContext('2d');
+
+        // Degradado idéntico al del contador circular
+        const grad = tCtx.createLinearGradient(0, 0, w, h);
+        if (isRest) {
+            grad.addColorStop(0, '#FF9500');
+            grad.addColorStop(1, '#FF2D55');
+        } else {
+            grad.addColorStop(0, '#00F2FE');
+            grad.addColorStop(1, '#0A84FF');
+        }
+
+        // Recorte angular que avanza en el sentido de las agujas del reloj desde las 12 en punto
+        const cx = w / 2;
+        const cy = h / 2;
+        const radius = Math.hypot(w, h);
+        const startAngle = -Math.PI / 2;
+        const endAngle = startAngle + clamped * Math.PI * 2;
+
+        tCtx.beginPath();
+        tCtx.moveTo(cx, cy);
+        tCtx.arc(cx, cy, radius, startAngle, endAngle, false);
+        tCtx.closePath();
+        tCtx.fillStyle = grad;
+        tCtx.fill();
+
+        // Aplicar el sector coloreado únicamente sobre la silueta del personaje
+        tCtx.globalCompositeOperation = 'destination-in';
+        tCtx.drawImage(activeSilhouetteMask, 0, 0, w, h);
+
+        ctx.drawImage(tempCanvas, 0, 0);
+    }
+}
+
+window.addEventListener('resize', () => {
+    activeSilhouetteMask = null;
+    if (floatingStage.style.display === 'flex') {
+        renderPngDynamicOutline(lastFractionRendered);
+    }
+});
 
 function initApp() {
     document.body.className = 'bg-default';
@@ -266,11 +407,6 @@ function highlightSegments(activeIndex) {
     });
 }
 
-function setMaskImageHref(url) {
-    maskPngImg.setAttribute('href', url);
-    maskPngImg.setAttributeNS('http://www.w3.org/1999/xlink', 'href', url);
-}
-
 function prepareWorkout(index) {
     const workout = workoutsData[index];
     currentRoutine = workout.routine;
@@ -294,12 +430,11 @@ function prepareWorkout(index) {
     
     elNextExerciseName.innerText = `${currentRoutine[0].name} (${currentRoutine[0].duration}s)`;
 
-    // Limpiar restos de animación previa
     gifContainer.querySelectorAll('.slide-out-left').forEach(el => el.remove());
     floatingStage.classList.remove('slide-in-right');
     floatingStage.style.display = "none";
     imgGif.removeAttribute('src');
-    setMaskImageHref('');
+    activeSilhouetteMask = null;
     textGif.style.display = "block";
     textGif.innerHTML = "Pulsa Play cuando estés listo";
 
@@ -336,47 +471,62 @@ function loadStep(index) {
     if (step.isRest) {
         elTimerMain.classList.add('rest');
         elStepRing.setAttribute('stroke', 'url(#grad-rest)');
-        pngOutlineSvg.classList.add('rest-mode');
-        silhouetteProgressFill.classList.add('rest-mode');
+        outlineCanvas.classList.add('rest-mode');
         document.body.className = 'bg-rest';
     } else {
         elTimerMain.classList.remove('rest');
         elStepRing.setAttribute('stroke', 'url(#grad-active)');
-        pngOutlineSvg.classList.remove('rest-mode');
-        silhouetteProgressFill.classList.remove('rest-mode');
+        outlineCanvas.classList.remove('rest-mode');
         document.body.className = 'bg-active';
     }
 
     // Limpiar clones anteriores
     gifContainer.querySelectorAll('.slide-out-left').forEach(el => el.remove());
 
-    // Clonar la figura actual para que se deslice hacia la izquierda sin el SVG de máscara duplicado
+    // Clonar la figura actual (imagen + contorno actual) para que salga hacia la izquierda
     if (floatingStage.style.display === "flex" && imgGif.getAttribute('src')) {
         const outgoingStage = document.createElement('div');
         outgoingStage.className = 'floating-figure-stage slide-out-left';
         outgoingStage.style.display = 'flex';
+        
         const outgoingImg = imgGif.cloneNode(true);
         outgoingImg.removeAttribute('id');
         outgoingStage.appendChild(outgoingImg);
+
+        const outgoingCanvas = document.createElement('canvas');
+        outgoingCanvas.className = outlineCanvas.className;
+        outgoingCanvas.width = outlineCanvas.width;
+        outgoingCanvas.height = outlineCanvas.height;
+        outgoingCanvas.getContext('2d').drawImage(outlineCanvas, 0, 0);
+        outgoingStage.appendChild(outgoingCanvas);
+
         gifContainer.appendChild(outgoingStage);
         outgoingStage.addEventListener('animationend', () => outgoingStage.remove());
     }
 
-    // Mostrar la nueva figura flotante deslizándose desde la derecha con su contorno dinámico
+    // Mostrar la nueva figura flotante deslizándose desde la derecha
+    activeSilhouetteMask = null;
     if (step.png && step.png !== "") {
         floatingStage.classList.remove('slide-in-right');
+        imgGif.onload = () => {
+            activeSilhouetteMask = getSilhouetteOutlineMask(imgGif);
+            renderPngDynamicOutline(1);
+        };
         imgGif.src = step.png;
-        setMaskImageHref(step.png);
-        silhouetteProgressFill.style.setProperty('--progress-deg', '360deg');
         floatingStage.style.display = "flex";
         textGif.style.display = "none";
+        
+        if (imgGif.complete && imgGif.naturalWidth > 0) {
+            activeSilhouetteMask = getSilhouetteOutlineMask(imgGif);
+            renderPngDynamicOutline(1);
+        }
+
         void floatingStage.offsetWidth;
         floatingStage.classList.add('slide-in-right');
     } else {
         floatingStage.classList.remove('slide-in-right');
         floatingStage.style.display = "none";
         imgGif.removeAttribute('src');
-        setMaskImageHref('');
         textGif.style.display = "block";
         textGif.innerHTML = step.isRest ? "Toma un respiro" : "Imagen<br>(Sin archivo asignado)";
     }
@@ -424,9 +574,8 @@ function updateUI() {
         const offset = INNER_C * (1 - fractionRemaining);
         elStepRing.style.strokeDashoffset = offset;
 
-        // Sincronizar el contorno dinámico del PNG con el tiempo restante
-        const remainingDeg = Math.max(0, Math.min(360, fractionRemaining * 360));
-        silhouetteProgressFill.style.setProperty('--progress-deg', `${remainingDeg}deg`);
+        // Actualizar el contorno dinámico de la silueta en sincronía con el contador
+        renderPngDynamicOutline(fractionRemaining);
     }
 }
 
@@ -488,7 +637,7 @@ function finishWorkout() {
     
     highlightSegments(currentRoutine.length);
     elStepRing.style.strokeDashoffset = 0;
-    silhouetteProgressFill.style.setProperty('--progress-deg', '0deg');
+    renderPngDynamicOutline(0);
     
     playBeep('start');
     setTimeout(() => {
