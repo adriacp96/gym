@@ -244,9 +244,9 @@ body.bg-rest .light-2 { background: radial-gradient(circle, #FF9500, #4d1900); }
     color: #00F2FE;
 }
 
-/* ========================================= */
-/* TEMPORIZADOR CIRCULAR DOBLE MODERNO       */
-/* ========================================= */
+/* ========================================================= */
+/* TEMPORIZADOR CIRCULAR DOBLE MODERNO (RELOJ AUTOMÁTICO)    */
+/* ========================================================= */
 .timer-circle-container { 
     position: relative; 
     width: min(65vw, 34vh, 290px);
@@ -258,10 +258,10 @@ body.bg-rest .light-2 { background: radial-gradient(circle, #FF9500, #4d1900); }
     flex-shrink: 0; 
 }
 .timer-svg { position: absolute; width: 100%; height: 100%; overflow: visible; filter: drop-shadow(0 8px 20px rgba(0,0,0,0.35)); }
-#step-progress-ring { transition: stroke-dashoffset 1s linear, stroke 0.4s ease; }
+#step-progress-ring { transition: stroke 0.4s ease; }
 .segment-arc { transition: opacity 0.35s ease; }
 
-.timer-indicator-wrapper { position: absolute; top: 0; left: 0; right: 0; bottom: 0; transition: transform 1s linear; border-radius: 50%; pointer-events: none; z-index: 10; }
+.timer-indicator-wrapper { position: absolute; top: 0; left: 0; right: 0; bottom: 0; border-radius: 50%; pointer-events: none; z-index: 10; will-change: transform; }
 .timer-indicator-dot { position: absolute; top: 6.36%; left: 50%; transform: translate(-50%, -50%); width: 13px; height: 13px; background: #fff; border-radius: 50%; box-shadow: 0 0 12px #fff, 0 0 20px #00F2FE; }
 
 .timer-circle-content { position: absolute; display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; height: 100%; z-index: 5; }
