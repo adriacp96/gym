@@ -1,10 +1,21 @@
+// --- SISTEMA DE AUDIO (PITIDOS Y VOZ GUIADA) ---
 let isSoundEnabled = true;
+let isVoiceEnabled = true;
 let audioCtx = null;
+
+const motivationalPhrases = [
+    "¡Vamos, tú puedes!",
+    "¡Sigue así, mantén la postura!",
+    "¡Lo estás haciendo genial!",
+    "¡No bajes el ritmo!",
+    "¡Aguanta fuerte, aprieta el abdomen!"
+];
 
 function initAudio() {
     if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     if (audioCtx.state === 'suspended') audioCtx.resume();
     
+    // Desbloqueo de Web Audio en iOS
     const unlockOscillator = audioCtx.createOscillator();
     const unlockGain = audioCtx.createGain();
     unlockOscillator.connect(unlockGain);
@@ -12,6 +23,42 @@ function initAudio() {
     unlockGain.gain.value = 0; 
     unlockOscillator.start(audioCtx.currentTime);
     unlockOscillator.stop(audioCtx.currentTime + 0.01);
+}
+
+// Desbloqueo del motor de voz en iOS al tocar un botón
+function unlockSpeech() {
+    if (!('speechSynthesis' in window)) return;
+    const silentUtterance = new SpeechSynthesisUtterance('');
+    silentUtterance.volume = 0;
+    window.speechSynthesis.speak(silentUtterance);
+}
+
+// Convierte abreviaturas para que la voz de iOS las lea de forma natural
+function formatSpeechName(name) {
+    return name
+        .replace(/flex\.\s*rodillas/gi, 'flexiones de rodillas')
+        .replace(/flex\./gi, 'flexiones')
+        .replace(/\(Izquierdo\)/gi, 'lado izquierdo')
+        .replace(/\(Derecho\)/gi, 'lado derecho');
+}
+
+function speakText(text) {
+    if (!isVoiceEnabled || !('speechSynthesis' in window)) return;
+    
+    // Cancelar cualquier frase anterior que se haya quedado a medias
+    window.speechSynthesis.cancel();
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'es-ES';
+    utterance.rate = 1.05; // Ritmo dinámico de entrenador
+    utterance.pitch = 1.0;
+
+    // Seleccionar voz en español si está disponible en el dispositivo
+    const voices = window.speechSynthesis.getVoices();
+    const spanishVoice = voices.find(v => v.lang.startsWith('es'));
+    if (spanishVoice) utterance.voice = spanishVoice;
+
+    window.speechSynthesis.speak(utterance);
 }
 
 function playBeep(type) {
@@ -72,6 +119,7 @@ const btnPause = document.getElementById('btn-pause');
 const btnNext = document.getElementById('btn-next');
 const btnExit = document.getElementById('btn-exit');
 const btnSound = document.getElementById('btn-sound');
+const btnVoice = document.getElementById('btn-voice');
 const imgGif = document.getElementById('exercise-gif');
 const textGif = document.getElementById('gif-text');
 const readyOverlay = document.getElementById('ready-overlay');
@@ -94,7 +142,8 @@ function initApp() {
 
     document.querySelectorAll('.workout-card .btn').forEach(button => {
         button.addEventListener('click', (e) => {
-            initAudio(); 
+            initAudio();
+            unlockSpeech();
             prepareWorkout(e.target.getAttribute('data-index'));
         });
     });
@@ -116,7 +165,10 @@ function initApp() {
         countdownDisplay.style.animation = 'none';
         void countdownDisplay.offsetWidth; 
         countdownDisplay.style.animation = 'popCount 1s infinite';
-        playBeep('countdown'); 
+        
+        playBeep('countdown');
+        // Anuncia el primer ejercicio antes de que empiece mientras corre el 3, 2, 1
+        speakText(`Prepárate para ${formatSpeechName(currentRoutine[0].name)}`);
 
         prestartInterval = setInterval(() => {
             count--;
@@ -126,16 +178,30 @@ function initApp() {
             } else {
                 clearInterval(prestartInterval);
                 readyOverlay.style.display = 'none';
-                loadStep(currentStepIndex); 
+                loadStep(currentStepIndex, true); 
                 timerInterval = setInterval(updateTimer, 1000);
             }
         }, 1000);
     });
 
+    // Botón de Pitidos ON/OFF
     btnSound.addEventListener('click', () => {
         isSoundEnabled = !isSoundEnabled;
-        btnSound.innerText = isSoundEnabled ? "🔊 Sonido ON" : "🔇 Sonido OFF";
+        btnSound.innerText = isSoundEnabled ? "🔊 Pitidos ON" : "🔇 Pitidos OFF";
+        btnSound.classList.toggle('off', !isSoundEnabled);
         if (isSoundEnabled) initAudio();
+    });
+
+    // Botón de Voz Guiada ON/OFF
+    btnVoice.addEventListener('click', () => {
+        isVoiceEnabled = !isVoiceEnabled;
+        btnVoice.innerText = isVoiceEnabled ? "🗣️ Guía ON" : "🤐 Guía OFF";
+        btnVoice.classList.toggle('off', !isVoiceEnabled);
+        if (isVoiceEnabled) {
+            speakText("Guía de voz activada");
+        } else if ('speechSynthesis' in window) {
+            window.speechSynthesis.cancel();
+        }
     });
 }
 
@@ -149,7 +215,6 @@ function calculateTotalTime() {
     return currentRoutine.reduce((total, step) => total + step.duration, 0);
 }
 
-// Calcula el tiempo restante sumando desde un índice concreto hasta el final
 function calculateRemainingFromIndex(startIndex) {
     let total = 0;
     for (let i = startIndex; i < currentRoutine.length; i++) {
@@ -172,14 +237,17 @@ function getExerciseCounterText(stepIndex) {
 }
 
 // Busca el próximo ejercicio real (saltándose los descansos)
-function updateNextExercisePreview(fromIndex) {
-    let nextExercise = null;
+function getNextRealExercise(fromIndex) {
     for (let i = fromIndex + 1; i < currentRoutine.length; i++) {
         if (!currentRoutine[i].isRest) {
-            nextExercise = currentRoutine[i];
-            break;
+            return currentRoutine[i];
         }
     }
+    return null;
+}
+
+function updateNextExercisePreview(fromIndex) {
+    const nextExercise = getNextRealExercise(fromIndex);
     if (nextExercise) {
         elNextExerciseName.innerText = `${nextExercise.name} (${nextExercise.duration}s)`;
     } else {
@@ -273,7 +341,7 @@ function prepareWorkout(index) {
     if (prestartInterval) clearInterval(prestartInterval);
 }
 
-function loadStep(index) {
+function loadStep(index, isFirstAfterCountdown = false) {
     if (index >= currentRoutine.length) {
         finishWorkout();
         return;
@@ -290,6 +358,15 @@ function loadStep(index) {
     highlightSegments(index);
     
     playBeep('start');
+    
+    // Anuncio por voz al empezar el ejercicio o descanso
+    if (step.isRest) {
+        speakText("Descanso. Recupera el aliento.");
+    } else if (isFirstAfterCountdown) {
+        speakText(`¡Vamos! ${formatSpeechName(step.name)}`);
+    } else {
+        speakText(`¡Empezamos! ${formatSpeechName(step.name)}`);
+    }
     
     if (step.isRest) {
         elTimerMain.classList.add('rest');
@@ -331,6 +408,31 @@ function updateTimer() {
         elTimerMain.style.transform = 'scale(1.05)';
         setTimeout(() => elTimerMain.style.transform = 'scale(1)', 100);
 
+        const step = currentRoutine[currentStepIndex];
+        const halfTime = Math.floor(currentStepDuration / 2);
+
+        // --- FRASES GUIADAS DURANTE EL EJERCICIO O DESCANSO ---
+        if (!step.isRest) {
+            // 1. Mitad del ejercicio
+            if (currentStepDuration >= 20 && timeRemainingInStep === halfTime) {
+                const randomPhrase = motivationalPhrases[Math.floor(Math.random() * motivationalPhrases.length)];
+                speakText(`¡Mitad del tiempo! ${randomPhrase}`);
+            }
+            // 2. Últimos 10 segundos (para ejercicios de 40s o más)
+            else if (currentStepDuration >= 40 && timeRemainingInStep === 10) {
+                speakText("¡Últimos diez segundos, aguanta!");
+            }
+        } else {
+            // 3. Durante el descanso: Aviso anticipado del siguiente ejercicio cuando faltan 5 segundos
+            if (timeRemainingInStep === 5) {
+                const nextEx = getNextRealExercise(currentStepIndex);
+                if (nextEx) {
+                    speakText(`Prepárate, siguiente ejercicio: ${formatSpeechName(nextEx.name)}`);
+                }
+            }
+        }
+
+        // Pitidos de los últimos 3 segundos
         if (timeRemainingInStep > 0 && timeRemainingInStep <= 3) {
             playBeep('countdown');
         }
@@ -363,13 +465,14 @@ function togglePause() {
     
     if (isPaused) {
         document.body.className = 'bg-default';
+        speakText("Entrenamiento en pausa");
     } else {
         const step = currentRoutine[currentStepIndex];
         document.body.className = step.isRest ? 'bg-rest' : 'bg-active';
+        speakText("Reanudamos");
     }
 }
 
-// Retroceder al paso anterior (o reiniciar el primero si estás en el paso 0)
 function prevStep() {
     if (currentRoutine.length === 0) return;
 
@@ -386,7 +489,6 @@ function prevStep() {
     loadStep(currentStepIndex);
 }
 
-// Saltar al paso siguiente
 function skipStep() {
     if (currentStepIndex >= currentRoutine.length) return;
     
@@ -402,6 +504,7 @@ function skipStep() {
 function endWorkout() {
     if (timerInterval) clearInterval(timerInterval);
     if (prestartInterval) clearInterval(prestartInterval);
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
     screenWorkout.classList.remove('active');
     screenSelector.classList.add('active');
     document.body.className = 'bg-default';
@@ -419,9 +522,10 @@ function finishWorkout() {
     elStepRing.style.strokeDashoffset = 0;
     
     playBeep('start');
+    speakText("¡Entrenamiento completado! Buen trabajo.");
     setTimeout(() => {
         endWorkout();
-    }, 3000);
+    }, 3500);
 }
 
 document.addEventListener('DOMContentLoaded', initApp);
