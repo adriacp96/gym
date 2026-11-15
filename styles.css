@@ -1,10 +1,10 @@
 :root {
     --bg-color: #121212;
-    --surface-color: rgba(28, 28, 30, 0.5); /* Translúcido para el efecto cristal */
+    --surface-color: rgba(28, 28, 30, 0.5);
     --primary-color: #0A84FF;
     --rest-color: #FF453A;
     --text-color: #ffffff;
-    --text-secondary: #EBEBF5; /* Un gris más claro para contrastar sobre fondos de color */
+    --text-secondary: #EBEBF5;
     --glass-border: rgba(255, 255, 255, 0.1);
 }
 
@@ -17,7 +17,6 @@
     -webkit-tap-highlight-color: transparent;
 }
 
-/* Animación fluida del fondo */
 @keyframes gradientAnimation {
     0% { background-position: 0% 50%; }
     50% { background-position: 100% 50%; }
@@ -30,34 +29,33 @@ body {
     flex-direction: column;
     height: 100vh;
     overflow: hidden;
-    padding-top: env(safe-area-inset-top);
-    padding-bottom: env(safe-area-inset-bottom);
-    padding-left: env(safe-area-inset-left);
-    padding-right: env(safe-area-inset-right);
     
-    /* Configuración base de la animación */
+    /* El fondo ahora ocupa el 100% de la pantalla sin márgenes */
     background-size: 300% 300%;
     animation: gradientAnimation 12s ease infinite;
     transition: background-image 0.8s ease-in-out;
 }
 
-/* Estados del fondo */
-body.bg-default {
-    background-image: linear-gradient(-45deg, #0d0d12, #1c1c24, #050505, #111118);
-}
-body.bg-active {
-    background-image: linear-gradient(-45deg, #001a33, #0a84ff, #003366, #001122);
-}
-body.bg-rest {
-    background-image: linear-gradient(-45deg, #330000, #ff453a, #660000, #220000);
-}
+body.bg-default { background-image: linear-gradient(-45deg, #0d0d12, #1c1c24, #050505, #111118); }
+body.bg-active { background-image: linear-gradient(-45deg, #001a33, #0a84ff, #003366, #001122); }
+body.bg-rest { background-image: linear-gradient(-45deg, #330000, #ff453a, #660000, #220000); }
 
-.screen { display: none; flex-direction: column; height: 100%; width: 100%; padding: 20px; }
+.screen { 
+    display: none; 
+    flex-direction: column; 
+    height: 100%; 
+    width: 100%; 
+    /* Las Safe Areas se aplican al contenido interior sumadas al padding base */
+    padding-top: calc(20px + env(safe-area-inset-top));
+    padding-bottom: calc(20px + env(safe-area-inset-bottom));
+    padding-left: calc(20px + env(safe-area-inset-left));
+    padding-right: calc(20px + env(safe-area-inset-right));
+}
 .screen.active { display: flex; }
 
 .top-bar { 
     display: flex; justify-content: space-between; align-items: center; 
-    padding: 10px 0 20px 0; max-width: 600px; margin: 0 auto; width: 100%; 
+    padding: 0 0 20px 0; max-width: 600px; margin: 0 auto; width: 100%; 
 }
 .header-title { font-size: 28px; font-weight: 700; text-shadow: 0 2px 10px rgba(0,0,0,0.3); }
 
@@ -72,7 +70,6 @@ body.bg-rest {
 
 .workout-list { overflow-y: auto; flex: 1; padding-bottom: 20px; max-width: 600px; margin: 0 auto; width: 100%; }
 
-/* Efecto Glassmorphism en tarjetas */
 .workout-card { 
     background-color: var(--surface-color); 
     backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
@@ -116,7 +113,6 @@ body.bg-rest {
     color: #ffffff; line-height: 1; text-shadow: 0 4px 20px rgba(0,0,0,0.4); 
     transition: transform 0.1s ease-out;
 }
-/* El reloj cambia a un tono más vibrante si es descanso, aunque el fondo ya indique el estado */
 .timer-main.rest { color: #ffeb3b; }
 
 .timer-total { font-size: 18px; color: var(--text-secondary); font-variant-numeric: tabular-nums; margin-top: 15px; background: rgba(0,0,0,0.2); padding: 6px 16px; border-radius: 20px; }
