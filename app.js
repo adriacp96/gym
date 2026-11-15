@@ -44,7 +44,7 @@ let currentRoutine = [];
 let currentStepIndex = 0;
 let timeRemainingInStep = 0;
 let totalTimeRemaining = 0;
-let totalWorkoutTime = 0; // NUEVO: Guarda el tiempo total para los porcentajes del círculo
+let totalWorkoutTime = 0;
 let timerInterval = null;
 let prestartInterval = null;
 let isPaused = false;
@@ -57,6 +57,7 @@ const elExerciseName = document.getElementById('exercise-name');
 const elTimerMain = document.getElementById('timer-main');
 const elTimerTotal = document.getElementById('timer-total');
 const btnPause = document.getElementById('btn-pause');
+const btnNext = document.getElementById('btn-next'); // NUEVO BOTÓN
 const btnExit = document.getElementById('btn-exit');
 const btnSound = document.getElementById('btn-sound');
 const imgGif = document.getElementById('exercise-gif');
@@ -87,6 +88,7 @@ function initApp() {
     });
 
     btnPause.addEventListener('click', togglePause);
+    btnNext.addEventListener('click', skipStep); // NUEVO EVENTO
     btnExit.addEventListener('click', endWorkout);
     btnCancelPlay.addEventListener('click', endWorkout);
     
@@ -134,11 +136,10 @@ function calculateTotalTime() {
     return currentRoutine.reduce((total, step) => total + step.duration, 0);
 }
 
-// NUEVO: Pinta los segmentos proporcionales del círculo SVG
 function drawSegments() {
     const container = document.getElementById('timer-segments');
     container.innerHTML = '';
-    const C = 2 * Math.PI * 45; // Circunferencia de r=45 -> 282.743
+    const C = 2 * Math.PI * 45; 
     let accumulated = 0;
     
     currentRoutine.forEach(step => {
@@ -148,11 +149,9 @@ function drawSegments() {
         circle.setAttribute('cy', '50');
         circle.setAttribute('r', '45');
         circle.setAttribute('fill', 'none');
-        // Azul para ejercicio, Rojo para descanso
         circle.setAttribute('stroke', step.isRest ? '#FF453A' : '#0A84FF');
         circle.setAttribute('stroke-width', '6');
         
-        // Pequeño hueco de 1px entre segmentos si son grandes, para que se vean separados
         const visibleLength = Math.max(0.1, length - 1);
         
         circle.setAttribute('stroke-dasharray', `${visibleLength} ${C}`);
@@ -162,7 +161,6 @@ function drawSegments() {
         accumulated += length;
     });
 
-    // Resetear el progreso visual al 0%
     document.getElementById('timer-progress-shadow').style.strokeDashoffset = C;
     document.getElementById('timer-indicator-wrapper').style.transform = `rotate(0deg)`;
 }
@@ -195,7 +193,7 @@ function prepareWorkout(index) {
     btnCancelPlay.style.display = 'block';
     countdownDisplay.style.display = 'none';
 
-    drawSegments(); // Dibuja la pista circular
+    drawSegments(); 
 
     if (timerInterval) clearInterval(timerInterval);
     if (prestartInterval) clearInterval(prestartInterval);
@@ -259,16 +257,13 @@ function updateUI() {
     elTimerMain.innerText = timeRemainingInStep;
     elTimerTotal.innerText = formatTime(totalTimeRemaining);
     
-    // NUEVO: Cálculo y animación de los anillos según tiempo transcurrido total
     if (totalWorkoutTime > 0) {
         const elapsed = totalWorkoutTime - totalTimeRemaining;
-        const C = 2 * Math.PI * 45; // 282.743
+        const C = 2 * Math.PI * 45; 
         const elapsedLength = (elapsed / totalWorkoutTime) * C;
         const angle = (elapsed / totalWorkoutTime) * 360;
         
-        // Mueve la sombra oscura
         document.getElementById('timer-progress-shadow').style.strokeDashoffset = C - elapsedLength;
-        // Gira el punto blanco luminoso
         document.getElementById('timer-indicator-wrapper').style.transform = `rotate(${angle}deg)`;
     }
 }
@@ -283,6 +278,25 @@ function togglePause() {
         const step = currentRoutine[currentStepIndex];
         document.body.className = step.isRest ? 'bg-rest' : 'bg-active';
     }
+}
+
+// NUEVA FUNCIÓN: Saltar al siguiente paso
+function skipStep() {
+    // Evita errores si le das a saltar cuando ya ha terminado
+    if (currentStepIndex >= currentRoutine.length) return;
+    
+    // Restar el tiempo que quedaba de golpe para que el reloj general avance
+    totalTimeRemaining -= timeRemainingInStep;
+    
+    // Si estaba pausado, lo reanudamos automáticamente al saltar
+    if (isPaused) {
+        isPaused = false;
+        btnPause.innerText = "Pausar";
+    }
+    
+    // Pasamos al siguiente
+    currentStepIndex++;
+    loadStep(currentStepIndex);
 }
 
 function endWorkout() {
@@ -300,7 +314,6 @@ function finishWorkout() {
     elTimerTotal.innerText = "00:00";
     document.body.className = 'bg-default';
     
-    // Completa el anillo al 100% visualmente
     document.getElementById('timer-progress-shadow').style.strokeDashoffset = 0;
     
     playBeep('start');
