@@ -1,4 +1,4 @@
-// --- SISTEMA DE AUDIO (PITIDOS Y VOZ GUIADA) ---
+// --- SISTEMA DE AUDIO (PITIDOS, VOZ GUIADA Y AUDIO DUCKING EN iOS) ---
 let isSoundEnabled = true;
 let isVoiceEnabled = true;
 let audioCtx = null;
@@ -11,26 +11,44 @@ const motivationalPhrases = [
     "¡Aguanta fuerte, aprieta el abdomen!"
 ];
 
+// Configura la sesión de audio de iOS para que NUNCA pause tu música de fondo
+function configureIOSAudioSession(mode) {
+    if ('audioSession' in navigator) {
+        try {
+            // 'ambient': mezcla con la música al 100% de volumen
+            // 'transient': baja ligeramente la música de fondo (ducking) sin pausarla
+            navigator.audioSession.type = mode;
+        } catch (e) {
+            // Ignorar si la versión de Safari no soporta ese modo específico
+        }
+    }
+}
+
 function initAudio() {
-    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    if (audioCtx.state === 'suspended') audioCtx.resume();
+    configureIOSAudioSession('ambient');
+
+    if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+    }
     
-    // Desbloqueo de Web Audio en iOS
+    // Desbloqueo silencioso del canal Web Audio en iOS
     const unlockOscillator = audioCtx.createOscillator();
     const unlockGain = audioCtx.createGain();
     unlockOscillator.connect(unlockGain);
     unlockGain.connect(audioCtx.destination);
-    unlockGain.gain.value = 0; 
+    unlockGain.gain.value = 0.0001; 
     unlockOscillator.start(audioCtx.currentTime);
     unlockOscillator.stop(audioCtx.currentTime + 0.01);
 }
 
-// Desbloqueo del motor de voz en iOS al tocar un botón
+// Desbloqueo suave del motor de voz sin interrumpir la música
 function unlockSpeech() {
     if (!('speechSynthesis' in window)) return;
-    const silentUtterance = new SpeechSynthesisUtterance('');
-    silentUtterance.volume = 0;
-    window.speechSynthesis.speak(silentUtterance);
+    configureIOSAudioSession('ambient');
+    window.speechSynthesis.getVoices();
 }
 
 // Convierte abreviaturas para que la voz de iOS las lea de forma natural
@@ -42,21 +60,37 @@ function formatSpeechName(name) {
         .replace(/\(Derecho\)/gi, 'lado derecho');
 }
 
-function speakText(text) {
+function speakText(text, forceInterrupt = false) {
     if (!isVoiceEnabled || !('speechSynthesis' in window)) return;
     
-    // Cancelar cualquier frase anterior que se haya quedado a medias
-    window.speechSynthesis.cancel();
+    // Evitamos hacer cancel() innecesarios porque en iOS resetea el canal de música
+    if (forceInterrupt && window.speechSynthesis.speaking) {
+        window.speechSynthesis.cancel();
+    }
 
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = 'es-ES';
-    utterance.rate = 1.05; // Ritmo dinámico de entrenador
+    utterance.rate = 1.05;
     utterance.pitch = 1.0;
+    utterance.volume = 1.0;
 
-    // Seleccionar voz en español si está disponible en el dispositivo
     const voices = window.speechSynthesis.getVoices();
     const spanishVoice = voices.find(v => v.lang.startsWith('es'));
     if (spanishVoice) utterance.voice = spanishVoice;
+
+    // Cuando empieza a hablar: activa el modo "ducking" (baja un poco la música sin pararla)
+    utterance.onstart = () => {
+        configureIOSAudioSession('transient');
+    };
+
+    // Cuando termina de hablar: devuelve la música al 100% de su volumen
+    utterance.onend = () => {
+        configureIOSAudioSession('ambient');
+    };
+
+    utterance.onerror = () => {
+        configureIOSAudioSession('ambient');
+    };
 
     window.speechSynthesis.speak(utterance);
 }
@@ -64,6 +98,11 @@ function speakText(text) {
 function playBeep(type) {
     if (!isSoundEnabled || !audioCtx) return;
     if (audioCtx.state === 'suspended') audioCtx.resume();
+
+    // Mantiene la sesión en modo ambiente para que el pitido se mezcle con tu música
+    if (!window.speechSynthesis || !window.speechSynthesis.speaking) {
+        configureIOSAudioSession('ambient');
+    }
 
     const oscillator = audioCtx.createOscillator();
     const gainNode = audioCtx.createGain();
@@ -73,17 +112,17 @@ function playBeep(type) {
     if (type === 'countdown') {
         oscillator.type = 'sine';
         oscillator.frequency.setValueAtTime(440, audioCtx.currentTime); 
-        gainNode.gain.setValueAtTime(1, audioCtx.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.2);
+        gainNode.gain.setValueAtTime(0.7, audioCtx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.18);
         oscillator.start(audioCtx.currentTime);
-        oscillator.stop(audioCtx.currentTime + 0.2);
+        oscillator.stop(audioCtx.currentTime + 0.18);
     } else if (type === 'start') {
-        oscillator.type = 'square';
+        oscillator.type = 'triangle';
         oscillator.frequency.setValueAtTime(880, audioCtx.currentTime); 
-        gainNode.gain.setValueAtTime(1, audioCtx.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.4);
+        gainNode.gain.setValueAtTime(0.9, audioCtx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.38);
         oscillator.start(audioCtx.currentTime);
-        oscillator.stop(audioCtx.currentTime + 0.4);
+        oscillator.stop(audioCtx.currentTime + 0.38);
     }
 }
 
@@ -129,6 +168,8 @@ const countdownDisplay = document.getElementById('countdown-display');
 
 function initApp() {
     document.body.className = 'bg-default';
+    configureIOSAudioSession('ambient');
+
     workoutsData.forEach((workout, index) => {
         const card = document.createElement('div');
         card.className = 'workout-card';
@@ -167,8 +208,7 @@ function initApp() {
         countdownDisplay.style.animation = 'popCount 1s infinite';
         
         playBeep('countdown');
-        // Anuncia el primer ejercicio antes de que empiece mientras corre el 3, 2, 1
-        speakText(`Prepárate para ${formatSpeechName(currentRoutine[0].name)}`);
+        speakText(`Prepárate para ${formatSpeechName(currentRoutine[0].name)}`, true);
 
         prestartInterval = setInterval(() => {
             count--;
@@ -198,9 +238,10 @@ function initApp() {
         btnVoice.innerText = isVoiceEnabled ? "🗣️ Guía ON" : "🤐 Guía OFF";
         btnVoice.classList.toggle('off', !isVoiceEnabled);
         if (isVoiceEnabled) {
-            speakText("Guía de voz activada");
+            speakText("Guía de voz activada", true);
         } else if ('speechSynthesis' in window) {
             window.speechSynthesis.cancel();
+            configureIOSAudioSession('ambient');
         }
     });
 }
@@ -223,7 +264,6 @@ function calculateRemainingFromIndex(startIndex) {
     return total;
 }
 
-// Cuenta únicamente los ejercicios reales (ignora los descansos)
 function getExerciseCounterText(stepIndex) {
     const totalExercises = currentRoutine.filter(step => !step.isRest).length;
     let currentExerciseNum = 0;
@@ -236,7 +276,6 @@ function getExerciseCounterText(stepIndex) {
     return `Ejercicio ${currentExerciseNum} / ${totalExercises}`;
 }
 
-// Busca el próximo ejercicio real (saltándose los descansos)
 function getNextRealExercise(fromIndex) {
     for (let i = fromIndex + 1; i < currentRoutine.length; i++) {
         if (!currentRoutine[i].isRest) {
@@ -359,13 +398,13 @@ function loadStep(index, isFirstAfterCountdown = false) {
     
     playBeep('start');
     
-    // Anuncio por voz al empezar el ejercicio o descanso
+    // Si es el primer ejercicio justo después del 3,2,1 (donde ya dijo el nombre), solo dice "¡Vamos!"
     if (step.isRest) {
-        speakText("Descanso. Recupera el aliento.");
+        speakText("Descanso. Recupera el aliento.", true);
     } else if (isFirstAfterCountdown) {
-        speakText(`¡Vamos! ${formatSpeechName(step.name)}`);
+        speakText("¡Vamos!", false);
     } else {
-        speakText(`¡Empezamos! ${formatSpeechName(step.name)}`);
+        speakText(`¡Empezamos! ${formatSpeechName(step.name)}`, true);
     }
     
     if (step.isRest) {
@@ -413,26 +452,22 @@ function updateTimer() {
 
         // --- FRASES GUIADAS DURANTE EL EJERCICIO O DESCANSO ---
         if (!step.isRest) {
-            // 1. Mitad del ejercicio
             if (currentStepDuration >= 20 && timeRemainingInStep === halfTime) {
                 const randomPhrase = motivationalPhrases[Math.floor(Math.random() * motivationalPhrases.length)];
-                speakText(`¡Mitad del tiempo! ${randomPhrase}`);
-            }
-            // 2. Últimos 10 segundos (para ejercicios de 40s o más)
-            else if (currentStepDuration >= 40 && timeRemainingInStep === 10) {
-                speakText("¡Últimos diez segundos, aguanta!");
+                speakText(`¡Mitad del tiempo! ${randomPhrase}`, false);
+            } else if (currentStepDuration >= 40 && timeRemainingInStep === 10) {
+                speakText("¡Últimos diez segundos, aguanta!", false);
             }
         } else {
-            // 3. Durante el descanso: Aviso anticipado del siguiente ejercicio cuando faltan 5 segundos
+            // Durante el descanso: Aviso anticipado cuando faltan 5 segundos
             if (timeRemainingInStep === 5) {
                 const nextEx = getNextRealExercise(currentStepIndex);
                 if (nextEx) {
-                    speakText(`Prepárate, siguiente ejercicio: ${formatSpeechName(nextEx.name)}`);
+                    speakText(`Prepárate para ${formatSpeechName(nextEx.name)}`, false);
                 }
             }
         }
 
-        // Pitidos de los últimos 3 segundos
         if (timeRemainingInStep > 0 && timeRemainingInStep <= 3) {
             playBeep('countdown');
         }
@@ -465,11 +500,11 @@ function togglePause() {
     
     if (isPaused) {
         document.body.className = 'bg-default';
-        speakText("Entrenamiento en pausa");
+        speakText("Entrenamiento en pausa", true);
     } else {
         const step = currentRoutine[currentStepIndex];
         document.body.className = step.isRest ? 'bg-rest' : 'bg-active';
-        speakText("Reanudamos");
+        speakText("Reanudamos", true);
     }
 }
 
@@ -505,6 +540,7 @@ function endWorkout() {
     if (timerInterval) clearInterval(timerInterval);
     if (prestartInterval) clearInterval(prestartInterval);
     if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    configureIOSAudioSession('ambient');
     screenWorkout.classList.remove('active');
     screenSelector.classList.add('active');
     document.body.className = 'bg-default';
@@ -522,7 +558,7 @@ function finishWorkout() {
     elStepRing.style.strokeDashoffset = 0;
     
     playBeep('start');
-    speakText("¡Entrenamiento completado! Buen trabajo.");
+    speakText("¡Entrenamiento completado! Buen trabajo.", true);
     setTimeout(() => {
         endWorkout();
     }, 3500);
