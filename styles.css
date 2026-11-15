@@ -110,6 +110,8 @@ body.bg-rest .light-2 { background: radial-gradient(circle, #FF9500, #4d1900); }
 .top-bar { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; padding: 0 0 20px 0; max-width: 600px; margin: 0 auto; width: 100%; }
 .header-title { font-size: clamp(22px, 5vw, 28px); font-weight: 700; text-shadow: 0 2px 10px rgba(0,0,0,0.3); }
 
+.top-controls { display: flex; gap: 8px; align-items: center; }
+
 .btn-sound { background-color: var(--surface-color); color: white; border: 1px solid var(--glass-border); border-radius: 20px; padding: 8px 12px; font-size: 13px; font-weight: 600; cursor: pointer; backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); transition: background-color 0.2s, opacity 0.2s; white-space: nowrap; }
 .btn-sound:active { background-color: rgba(255,255,255,0.2); }
 .btn-sound.off { opacity: 0.55; }
@@ -133,7 +135,7 @@ body.bg-rest .light-2 { background: radial-gradient(circle, #FF9500, #4d1900); }
 .gif-placeholder { 
     position: relative; 
     width: min(86vw, 350px);
-    height: clamp(150px, 24vh, 210px);
+    height: clamp(155px, 24vh, 215px);
     background: transparent;
     border: none;
     box-shadow: none;
@@ -168,41 +170,20 @@ body.bg-rest .light-2 { background: radial-gradient(circle, #FF9500, #4d1900); }
     filter: drop-shadow(0 12px 24px rgba(0, 0, 0, 0.55));
 }
 
-/* Capa SVG superpuesta para dibujar la silueta luminosa */
-.png-outline-svg {
+/* Canvas que dibuja el contorno luminoso exacto sobre el PNG */
+.png-outline-canvas {
     position: absolute;
     inset: 0;
     width: 100%;
     height: 100%;
     z-index: 3;
     pointer-events: none;
-    overflow: visible;
-    filter: drop-shadow(0 0 8px rgba(0, 242, 254, 0.55));
+    filter: drop-shadow(0 0 8px rgba(0, 242, 254, 0.7));
     transition: filter 0.4s ease;
 }
 
-.png-outline-svg.rest-mode {
-    filter: drop-shadow(0 0 8px rgba(255, 45, 85, 0.6));
-}
-
-/* Relleno cónico que recorre el contorno en sincronía con el tiempo restante */
-.silhouette-progress-fill {
-    width: 100%;
-    height: 100%;
-    --progress-deg: 360deg;
-    --outline-color-1: #00F2FE;
-    --outline-color-2: #0A84FF;
-    background: conic-gradient(
-        from 0deg at 50% 50%,
-        var(--outline-color-1) 0deg,
-        var(--outline-color-2) var(--progress-deg),
-        transparent var(--progress-deg) 360deg
-    );
-}
-
-.silhouette-progress-fill.rest-mode {
-    --outline-color-1: #FF9500;
-    --outline-color-2: #FF2D55;
+.png-outline-canvas.rest-mode {
+    filter: drop-shadow(0 0 8px rgba(255, 45, 85, 0.75));
 }
 
 /* Animaciones de entrada/salida de la figura flotante */
