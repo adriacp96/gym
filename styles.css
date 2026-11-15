@@ -209,7 +209,6 @@ body {
 /* MEDIA QUERIES: MODO HORIZONTAL / PANTALLA DIVIDIDA / DUO  */
 /* ========================================================= */
 @media (orientation: landscape) and (max-height: 600px), (min-width: 650px) {
-    /* Convierte el diseño en dos columnas lado a lado */
     .content-wrapper {
         flex-direction: row;
         align-items: stretch;
@@ -219,7 +218,7 @@ body {
         flex: 1;
         max-width: 50%;
         height: 100%;
-        aspect-ratio: auto; /* Permite que el GIF se adapte al alto disponible */
+        aspect-ratio: auto;
     }
 
     .exercise-info {
@@ -228,7 +227,7 @@ body {
     }
 
     .timer-main {
-        font-size: 12vh; /* Escala el reloj según el alto de la pantalla */
+        font-size: 12vh;
     }
 
     .exercise-name {
